@@ -40,6 +40,7 @@ import {
   Plug,
   Presentation,
   Plus,
+  Radio,
   RefreshCw,
   RotateCcw,
   Scissors,
@@ -67,6 +68,8 @@ import { PipelineCenter } from "./PipelineCenter";
 import { OpsReportCard } from "./OpsReportCard";
 import { OfficeStudio } from "./OfficeStudio";
 import { MapLeads } from "./MapLeads";
+import { BroadcastCenter } from "./BroadcastCenter";
+import { ServiceChannels } from "./ServiceChannels";
 import { PublishHub } from "./PublishHub";
 import {
   clearArtworks,
@@ -162,6 +165,8 @@ const navItems = [
   { label: "地图获客", icon: MapIcon },
   { label: "企业知识库", icon: BookOpen },
   { label: "企微私域", icon: MessageSquareText },
+  { label: "群发计划", icon: Send },
+  { label: "客服渠道", icon: Radio },
   { label: "GEO 工作台", icon: Globe2 },
   { label: "数据洞察", icon: BarChart3 },
   { label: "AI 创作", icon: Palette },
@@ -1913,6 +1918,12 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
               </div>
             </section>
           )}
+
+          {activeNav === "群发计划" && (
+            <BroadcastCenter leads={leads} kfBaseUrl={kfConfig.baseUrl} kfSecret={kfConfig.secret} />
+          )}
+
+          {activeNav === "客服渠道" && <ServiceChannels />}
 
           {activeNav === "GEO 工作台" && (
             <GeoWorkbench knowledge={knowledge} />

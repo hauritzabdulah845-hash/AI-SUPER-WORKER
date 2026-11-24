@@ -13,6 +13,7 @@ import { decrypt, signature, parseXml, escapeXml } from "./crypto.mjs";
 import { WecomClient } from "./wecom.mjs";
 import { matchKeywordRule, matchDefaultRule, pickRuleByAI, buildReply } from "./rules.mjs";
 import { createCustomerStore, renderTemplate } from "./customers.mjs";
+import { sendBroadcast } from "./broadcast.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -34,6 +35,9 @@ export function loadConfig(configPath = join(ROOT, "config.json")) {
     adminSecret: process.env.ADMIN_SECRET ?? raw.adminSecret ?? "",
     // 企微群机器人 webhook：客户阶段跃迁到高意向时推送提醒（留空则不启用）
     alertWebhook: process.env.ALERT_WEBHOOK ?? raw.alertWebhook ?? "",
+    // 客户群发（主动激活）：客户联系 secret + 发送成员 userid，接入后置；缺省走 MOCK 演示
+    contactSecret: process.env.CONTACT_SECRET ?? raw.contactSecret ?? "",
+    broadcastSender: process.env.BROADCAST_SENDER ?? raw.broadcastSender ?? "",
     alertStages: Array.isArray(raw.alertStages) && raw.alertStages.length ? raw.alertStages : ["报价", "成交", "试用"],
     dataDir: raw.dataDir ?? join(ROOT, "data"),
   };
@@ -236,6 +240,44 @@ export function createService({ config, rules, logger = console }) {
       }
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ rules, sent: client.sent.slice(-20) }, null, 2));
+      return;
+    }
+
+    // 群发（主动激活）：前端按线索筛好受众，服务端负责发送（MOCK=演示记录）
+    if (url.pathname === "/api/broadcast") {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Headers", "content-type, x-admin-secret");
+      res.setHeader("Cache-Control", "no-store");
+      if (req.method === "OPTIONS") {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      if (!adminAuthorized(req, url)) {
+        res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: false, error: "forbidden" }));
+        return;
+      }
+      if (req.method !== "POST") {
+        res.writeHead(405, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: false, error: "method not allowed" }));
+        return;
+      }
+      try {
+        const body = JSON.parse((await readBody(req)) || "{}");
+        const payload = await sendBroadcast({
+          client,
+          config,
+          recipients: body.recipients,
+          content: body.content,
+          logger,
+        });
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: true, mock: config.mock, ...payload }));
+      } catch (error) {
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+      }
       return;
     }
 

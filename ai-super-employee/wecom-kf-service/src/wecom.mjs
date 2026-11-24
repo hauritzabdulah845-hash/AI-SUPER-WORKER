@@ -80,4 +80,42 @@ export class WecomClient {
     if (data.errcode !== 0) throw new Error(`send_msg 失败：${data.errcode} ${data.errmsg}`);
     return data;
   }
+
+  /** 客户联系（externalcontact）作用域的 token：与客服 kfSecret 是两个凭据。 */
+  async contactAccessToken() {
+    const secret = this.config.contactSecret;
+    if (!secret) throw new Error("未配置 contactSecret（企微客户联系 secret），无法真实群发");
+    const cacheKey = `contact:${secret}`;
+    const cached = this.tokenCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now() + 5 * 60 * 1000) return cached.token;
+
+    const url = `${API_BASE}/gettoken?corpid=${encodeURIComponent(this.config.corpId)}&corpsecret=${encodeURIComponent(secret)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.errcode !== 0) throw new Error(`获取客户联系 token 失败：${data.errcode} ${data.errmsg}`);
+    this.tokenCache.set(cacheKey, { token: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 });
+    return data.access_token;
+  }
+
+  /**
+   * 客户群发（官方「主动激活」通道）：externalcontact/add_msg_template。
+   * sender 必须是有客户联系权限的企业成员 userid；MOCK 模式只记录。
+   */
+  async sendBroadcastMsg({ externalUserId, content, sender }) {
+    const body = { external_userid: [externalUserId], text: { content }, sender };
+    if (this.mock) {
+      this.sent.push({ at: Date.now(), kind: "broadcast", ...body });
+      return { errcode: 0, msgid: `mock-bc-${this.sent.length}` };
+    }
+    if (!sender) throw new Error("未配置 broadcastSender（发送成员 userid），无法真实群发");
+    const token = await this.contactAccessToken();
+    const res = await fetch(`${API_BASE}/externalcontact/add_msg_template?access_token=${token}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.errcode !== 0) throw new Error(`add_msg_template 失败：${data.errcode} ${data.errmsg}`);
+    return data;
+  }
 }
