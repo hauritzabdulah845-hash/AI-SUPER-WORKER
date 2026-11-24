@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:mixcut": "tsx scripts/mixcut-check.ts"
+    "test:mixcut": "tsx scripts/mixcut-check.ts",
+    "test:pipeline": "tsx scripts/pipeline-check.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

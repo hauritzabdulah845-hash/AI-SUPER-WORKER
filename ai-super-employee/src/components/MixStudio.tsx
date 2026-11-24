@@ -18,7 +18,17 @@ import {
   removeMedia,
   type MediaAsset,
 } from "../cloud/media";
-import { buildFfmpegRecipe, buildSrt, generateMixPlan, planMarkdown, type MixPlan } from "../cloud/mixcut";
+import {
+  buildFfmpegRecipe,
+  buildSrt,
+  generateMixPlan,
+  loadSavedPlans,
+  planMarkdown,
+  removeSavedPlan,
+  savePlan,
+  type MixPlan,
+  type StoredMixPlan,
+} from "../cloud/mixcut";
 
 const STYLES = ["口播向", "产品展示", "氛围向"];
 const DURATIONS = [15, 30, 60];
@@ -67,6 +77,11 @@ export function MixStudio() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [plan, setPlan] = useState<MixPlan | null>(null);
+  const [saved, setSaved] = useState<StoredMixPlan[]>([]);
+
+  useEffect(() => {
+    setSaved(loadSavedPlans());
+  }, []);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const groups = useMemo(() => groupMedia(assets), [assets]);
@@ -131,6 +146,8 @@ export function MixStudio() {
         })),
       });
       setPlan(result);
+      savePlan({ topic, style, plan: result });
+      setSaved(loadSavedPlans());
       setNotice(result.demo ? "模型不可用，已给出模板方案（结构完整，可直接改）" : "混剪方案已生成");
     } catch (err) {
       setError(err instanceof Error ? err.message : "方案生成失败");
@@ -362,6 +379,54 @@ export function MixStudio() {
               <ul>{plan.notes.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
             </div>
           )}
+        </div>
+      )}
+
+      {saved.length > 0 && (
+        <div className="console-card mix-saved">
+          <div className="console-card-header">
+            <div>
+              <h2>留档方案（{saved.length}）</h2>
+              <p>手动与「定时流水线」生成的方案都在这里，最多留 20 份，仅存本机</p>
+            </div>
+          </div>
+          <ul>
+            {saved.map((row) => (
+              <li key={row.savedAt}>
+                <div className="mix-saved-info">
+                  <strong>{row.plan.title}</strong>
+                  <span>
+                    {row.topic} · {row.style} ·{" "}
+                    {new Date(row.savedAt).toLocaleString("zh-CN", { hour12: false })}
+                    {row.plan.demo ? " · 模板降级" : ""}
+                  </span>
+                </div>
+                <div className="mix-saved-actions">
+                  <button
+                    type="button"
+                    className="text-link"
+                    onClick={() => {
+                      void copyText(planMarkdown(row.plan, { topic: row.topic, style: row.style })).then((ok) =>
+                        setNotice(ok ? "方案 Markdown 已复制" : "复制失败"),
+                      );
+                    }}
+                  >
+                    <Copy size={13} />复制
+                  </button>
+                  <button
+                    type="button"
+                    className="text-link"
+                    onClick={() => {
+                      removeSavedPlan(row.savedAt);
+                      setSaved(loadSavedPlans());
+                    }}
+                  >
+                    删除
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </section>

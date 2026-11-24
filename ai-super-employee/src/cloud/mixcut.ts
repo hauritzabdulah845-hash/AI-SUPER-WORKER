@@ -333,3 +333,39 @@ export function planMarkdown(plan: MixPlan, input?: { topic?: string; style?: st
   lines.push("## 字幕时间轴", "", "见同名 .srt 文件；ffmpeg 脚本已生成（本机有 ffmpeg 可直接出片）。", "");
   return lines.join("\n");
 }
+
+/* ------------------------------------------------------------------ */
+/* 方案留档：流水线或手动产出的方案落本机，供工坊回看（不入库不上传）        */
+/* ------------------------------------------------------------------ */
+
+export interface StoredMixPlan {
+  savedAt: number;
+  topic: string;
+  style: string;
+  plan: MixPlan;
+}
+
+const PLAN_KEY = "ai-employee:mixcut-plans";
+
+export function loadSavedPlans(): StoredMixPlan[] {
+  try {
+    const raw = window.localStorage.getItem(PLAN_KEY);
+    const rows = raw ? (JSON.parse(raw) as StoredMixPlan[]) : [];
+    return Array.isArray(rows) ? rows.filter((row) => row && row.plan && Array.isArray(row.plan.scenes)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 留档一份方案（最新在前，最多 20 份）。 */
+export function savePlan(input: { topic: string; style: string; plan: MixPlan }): StoredMixPlan {
+  const row: StoredMixPlan = { savedAt: Date.now(), topic: input.topic, style: input.style, plan: input.plan };
+  const rows = [row, ...loadSavedPlans()].slice(0, 20);
+  window.localStorage.setItem(PLAN_KEY, JSON.stringify(rows));
+  return row;
+}
+
+export function removeSavedPlan(savedAt: number): void {
+  const rows = loadSavedPlans().filter((row) => row.savedAt !== savedAt);
+  window.localStorage.setItem(PLAN_KEY, JSON.stringify(rows));
+}

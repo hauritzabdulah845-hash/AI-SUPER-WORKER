@@ -4,6 +4,7 @@ export const NAV_SLUGS: Record<string, string> = {
   远程指令: "im",
   智能体团队: "agents",
   任务中心: "tasks",
+  定时任务: "pipeline",
   模板中心: "templates",
   内容工厂: "content",
   聚合发布: "publish",

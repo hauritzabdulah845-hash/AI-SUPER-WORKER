@@ -48,6 +48,7 @@ import {
   Sparkles,
   Target,
   Trash2,
+  Timer,
   TrendingUp,
   Users,
   X,
@@ -60,6 +61,8 @@ import { GeoWorkbench } from "./GeoWorkbench";
 import { VideoStudio } from "./VideoStudio";
 import { CommandInbox } from "./CommandInbox";
 import { MixStudio } from "./MixStudio";
+import { PipelineCenter } from "./PipelineCenter";
+import { OpsReportCard } from "./OpsReportCard";
 import { PublishHub } from "./PublishHub";
 import {
   clearArtworks,
@@ -147,6 +150,7 @@ const navItems = [
   { label: "远程指令", icon: Inbox },
   { label: "智能体团队", icon: Bot },
   { label: "任务中心", icon: FolderKanban },
+  { label: "定时任务", icon: Timer },
   { label: "模板中心", icon: Sparkles },
   { label: "内容工厂", icon: FileText },
   { label: "聚合发布", icon: Megaphone },
@@ -1668,6 +1672,8 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
             </section>
           )}
 
+          {activeNav === "定时任务" && <PipelineCenter />}
+
           {activeNav === "模板中心" && (
             <section className="template-center">
               <div className="template-center-head">
@@ -1960,6 +1966,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                   </div>
                 ))}
               </div>
+                          <OpsReportCard tasks={tasks} leads={leads} knowledgeCount={knowledge.length} contentCount={contentOutputs.length} />
             </section>
           )}
 
