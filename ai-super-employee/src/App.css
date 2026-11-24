@@ -8752,3 +8752,10 @@ button.console-search:hover { border-color: #8a78e4; }
 @media (max-width: 1100px) {
   .digital-grid { grid-template-columns: 1fr; }
 }
+
+/* --------------------------- 素材智能分析 --------------------------- */
+.analysis-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.analysis-tags b {
+  font-size: 11px; font-weight: 600; color: var(--purple-dark);
+  background: rgba(124, 77, 255, 0.08); border-radius: 999px; padding: 2px 8px;
+}
