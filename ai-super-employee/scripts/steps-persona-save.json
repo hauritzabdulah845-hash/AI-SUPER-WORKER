@@ -1,0 +1,6 @@
+[
+  { "name": "open-persona", "click": ".agent-management-card .agent-card-actions button:nth-child(2)" },
+  { "name": "type", "wait": 600, "eval": "(() => { const ta = document.querySelector('.persona-modal textarea'); if (!ta) return 'NO_TA'; const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set; setter.call(ta, '【身份】你是矩阵发布官（测试自定义人设）。\\n【输出】每次交付一张发布排期表，含平台、时间、素材链接、责任人四列。\\n【红线】不在非工作时段发布，不发布未审核素材。'); ta.dispatchEvent(new Event('input', { bubbles: true })); return 'SET:' + ta.value.length; })()" },
+  { "name": "save", "wait": 300, "click": ".persona-modal .form-actions .button-primary" },
+  { "name": "verify-ui", "wait": 1500, "eval": "(() => { return JSON.stringify({ modalClosed: !document.querySelector('.persona-modal'), toast: document.querySelector('.toast, [class*=toast]')?.textContent || '', badge: document.querySelector('.agent-persona-badge')?.textContent?.trim() || 'NO_BADGE' }); })()" }
+]

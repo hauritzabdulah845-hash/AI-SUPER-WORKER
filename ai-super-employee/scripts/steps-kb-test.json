@@ -1,0 +1,7 @@
+[
+  { "wait": 800 },
+  {
+    "name": "知识检索命中测试",
+    "eval": "(async()=>{try{const m=await import('/src/cloud/api.ts');const k=await m.loadKnowledgeContext('为山野煮茶写一条小红书开业推广文案，要包含礼盒价格和开业活动');return {count:k.length,items:k.map(x=>({title:x.title,type:x.docType,len:x.content.length,p380:x.content.includes('380'),p99:x.content.includes('9.9'),paddr:x.content.includes('文三路')}))};}catch(e){return {err:String((e&&e.message)||e)};}})()"
+  }
+]

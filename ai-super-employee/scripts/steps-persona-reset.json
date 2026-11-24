@@ -1,0 +1,8 @@
+[
+  { "name": "open-persona", "click": ".agent-management-card .agent-card-actions button:nth-child(2)" },
+  { "name": "check-custom-loaded", "wait": 600, "eval": "(() => { const ta = document.querySelector('.persona-modal textarea'); const meta = document.querySelector('.persona-meta'); return JSON.stringify({ starts: ta?.value.slice(0, 12), customTag: meta?.textContent.includes('自定义') }); })()" },
+  { "name": "reset", "click": ".persona-modal .persona-reset" },
+  { "name": "check-baseline", "wait": 300, "eval": "(() => { const ta = document.querySelector('.persona-modal textarea'); return 'baseline-loaded:' + ta.value.length + '字, 开头: ' + ta.value.slice(0, 16); })()" },
+  { "name": "save", "click": ".persona-modal .form-actions .button-primary" },
+  { "name": "verify", "wait": 1500, "eval": "(() => { return JSON.stringify({ toast: document.querySelector('.toast, [class*=toast]')?.textContent || '', badgeGone: !document.querySelector('.agent-persona-badge') }); })()" }
+]

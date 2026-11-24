@@ -1,0 +1,11 @@
+{
+  "name": "wecom-kf-service",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "企业微信（微信客服）自动回复服务：按客户消息回指定内容或 AI 名片小程序",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node test/run-test.mjs"
+  }
+}

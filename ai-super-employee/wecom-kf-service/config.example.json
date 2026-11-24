@@ -1,0 +1,15 @@
+{
+  "port": 8787,
+  "corpId": "ww1234567890abcdef",
+  "kfSecret": "微信客服 Secret（应用管理 → 微信客服）",
+  "token": "回调 Token（自行生成，服务端与企微后台必须一致）",
+  "encodingAesKey": "43位EncodingAESKey（企微后台生成，字符数必须是43）",
+  "miniAppId": "wx1234567890abcdef",
+  "miniTitle": "AI 名片",
+  "miniPagePath": "pages/card/index",
+  "miniThumbMediaId": "",
+  "deepseekKey": "",
+  "aiFallback": false,
+  "mock": false,
+  "adminSecret": "改成一个只有你知道的字符串"
+}

@@ -1,0 +1,7 @@
+[
+  { "wait": 800 },
+  {
+    "name": "生图通道与实测",
+    "eval": "(async()=>{try{const m=await import('/src/cloud/canvas.ts');const st=m.imageChannelStatus();let r=null;try{const got=await m.generateImage({prompt:'一杯热气腾腾的桂花乌龙茶，木质桌面，暖光，产品摄影',size:'1024x1024'});r={ok:true,count:got.length,srcHead:String(got[0]&&got[0].src).slice(0,60)};}catch(e){r={ok:false,err:String((e&&e.message)||e)};}return {status:st,result:r};}catch(e){return {err:String((e&&e.message)||e)};}})()"
+  }
+]

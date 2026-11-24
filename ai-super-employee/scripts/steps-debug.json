@@ -1,0 +1,7 @@
+[
+  { "wait": 1000 },
+  {
+    "name": "调试导入",
+    "eval": "(async()=>{try{const m=await import('/src/cloud/api.ts');return {keys:Object.keys(m).filter(k=>k.includes('nowledge')),hasFn:typeof m.loadKnowledgeContext};}catch(e){return {err:String(e&&e.message||e),stack:String(e&&e.stack||'').slice(0,200)};}})()"
+  }
+]

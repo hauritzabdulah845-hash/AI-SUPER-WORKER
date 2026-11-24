@@ -1,0 +1,12 @@
+[
+  { "wait": 1200 },
+  {
+    "name": "点第一个查看产出",
+    "eval": "(()=>{const b=[...document.querySelectorAll('.task-view-button')];if(!b.length)return 'NO_BTN:'+location.hash;b[0].click();return 'CLICKED:'+b.length;})()"
+  },
+  { "wait": 2600 },
+  {
+    "name": "详情内容检查",
+    "eval": "(()=>{const m=document.querySelector('.task-detail-modal');if(!m)return 'NO_MODAL';return {title:m.querySelector('.task-detail-title')?.textContent,meta:m.querySelector('.task-detail-meta')?.textContent,summary:(m.querySelector('.task-summary-block p')?.textContent||'').slice(0,80),steps:[...m.querySelectorAll('.task-detail-step')].map(s=>({h:s.querySelector('strong')?.textContent,len:(s.querySelector('.step-result')?.textContent||'').length})),buttons:[...m.querySelectorAll('.task-detail-actions button')].map(b=>b.textContent.trim())};})()"
+  }
+]

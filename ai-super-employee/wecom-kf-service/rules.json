@@ -1,0 +1,35 @@
+[
+  {
+    "id": "card",
+    "description": "客户想了解我们 → 发 AI 名片",
+    "keywords": ["名片", "介绍", "你是谁", "了解", "看看", "资料"],
+    "reply": { "type": "miniprogram" }
+  },
+  {
+    "id": "price",
+    "description": "问价格 → 发价格说明",
+    "keywords": ["价格", "多少钱", "报价", "费用", "怎么收费"],
+    "reply": {
+      "type": "text",
+      "content": "我们的方案按门店规模计费，基础版 2999 元/年，专业版 6999 元/年，都含 1 对 1 陪跑。想先看看能做什么，可以点开我发你的名片。"
+    }
+  },
+  {
+    "id": "demo",
+    "description": "想试用 → 发体验引导",
+    "keywords": ["试用", "体验", "demo", "先试试"],
+    "reply": {
+      "type": "text",
+      "content": "可以，点开下面的名片，进「体验入口」用手机号登录即可试用 7 天，不用付钱。"
+    }
+  },
+  {
+    "id": "fallback",
+    "description": "兜底回复",
+    "isDefault": true,
+    "reply": {
+      "type": "text",
+      "content": "收到，我看下你的问题，稍后详细回复。也可以先点开我的名片，里面写了我们能帮你做的事。"
+    }
+  }
+]

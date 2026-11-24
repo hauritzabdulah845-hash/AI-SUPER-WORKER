@@ -1,0 +1,4 @@
+[
+  { "name": "open-persona", "click": ".agent-management-card .agent-card-actions button:nth-child(2)" },
+  { "name": "check", "wait": 700, "eval": "(() => { const ta = document.querySelector('.persona-modal textarea'); const meta = document.querySelector('.persona-meta'); return JSON.stringify({ modal: !!document.querySelector('.persona-modal'), chars: ta ? ta.value.length : 0, meta: meta ? meta.textContent.trim() : '', title: document.querySelector('.persona-modal h2')?.textContent || '', cards: document.querySelectorAll('.agent-management-card').length, buttons: [...document.querySelectorAll('.agent-management-card .agent-card-actions button')].map(b => b.textContent.trim()).slice(0,3) }); })()" }
+]

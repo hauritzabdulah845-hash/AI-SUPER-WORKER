@@ -1,0 +1,7 @@
+[
+  { "wait": 800 },
+  {
+    "name": "跑真实任务",
+    "eval": "(async()=>{try{const m=await import('/src/cloud/runner.ts');const r=await m.runAgentTask({goal:'为山野煮茶写一条小红书开业推广文案，要包含礼盒价格和开业活动',template:null,mode:'private'});const all=r.steps.map(s=>s.output||'').join(' ');return {taskId:r.taskId,status:r.status,tokens:r.tokens,steps:r.steps.map(s=>({agent:s.agent,st:s.status,len:(s.output||'').length})),hits:{price380:all.includes('380'),first99:all.includes('9.9'),store500:all.includes('500'),addr:all.includes('文三路'),brand:all.includes('山野')},summary:r.summary.slice(0,120)};}catch(e){return {err:String((e&&e.message)||e)};}})()"
+  }
+]

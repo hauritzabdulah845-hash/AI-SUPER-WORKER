@@ -1,0 +1,19 @@
+[
+  {
+    "name": "写入正确配置",
+    "eval": "localStorage.setItem('supe-model-provider', JSON.stringify({baseUrl:'https://api.deepseek.com/vi',apiKey:'sk-8369d21d154c4ef98879315ea67893b3',model:'deepseek-flash'})); localStorage.setItem('supe-model-channel','custom'); 'ok'"
+  },
+  { "wait": 600 },
+  { "name": "启动AI总控", "click": ".button-large" },
+  { "wait": 2500 },
+  {
+    "name": "真实执行任务(DeepSeek)",
+    "eval": "(async()=>{const m=await import('/src/cloud/runner.ts');const r=await m.runAgentTask({goal:'为中医养生茶饮品牌写一条小红书开业推广文案',template:null,mode:'private'});return {taskId:r.taskId,title:r.title,status:r.status,tokens:r.tokens,summary:r.summary.slice(0,120),steps:r.steps.map(s=>({agent:s.agent,status:s.status,outLen:(s.output||'').length,head:(s.output||'').slice(0,60)}))};})()"
+  },
+  { "wait": 1500 },
+  {
+    "name": "任务中心截图前确认",
+    "eval": "location.hash='#/console/tasks'; 'ok'"
+  },
+  { "wait": 2500 }
+]

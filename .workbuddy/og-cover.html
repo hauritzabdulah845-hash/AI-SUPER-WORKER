@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", system-ui, sans-serif;
+    background: #0e0b1f;
+    color: #fff;
+    position: relative;
+  }
+  .bg {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(720px 420px at 12% 8%, rgba(120, 96, 246, .55), transparent 62%),
+      radial-gradient(620px 420px at 92% 96%, rgba(46, 178, 145, .38), transparent 60%),
+      linear-gradient(135deg, #14102b 0%, #1b1436 52%, #120e26 100%);
+  }
+  .grid {
+    position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(900px 520px at 30% 30%, #000 30%, transparent 78%);
+  }
+  .wrap { position: relative; height: 100%; padding: 58px 64px; display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .mark {
+    width: 46px; height: 46px; border-radius: 13px;
+    background: linear-gradient(140deg, #8b7cff, #5b4bc4);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 10px 26px rgba(108, 88, 226, .45);
+  }
+  .brand b { font-size: 22px; letter-spacing: .5px; }
+  .brand small { display: block; font-size: 11px; letter-spacing: 3px; color: #a79fd0; margin-top: 2px; }
+  h1 { margin-top: 54px; font-size: 62px; line-height: 1.18; letter-spacing: -1.6px; font-weight: 800; }
+  h1 span { background: linear-gradient(100deg, #b9adff, #7ee0c0); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  p.sub { margin-top: 22px; font-size: 21px; line-height: 1.7; color: #b7b1cf; max-width: 690px; }
+  .chips { margin-top: 34px; display: flex; gap: 12px; }
+  .chip {
+    padding: 10px 18px; border-radius: 999px; font-size: 15px; color: #d7d2ee;
+    border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06);
+  }
+  .panel {
+    position: absolute; right: 58px; top: 132px; width: 372px;
+    border-radius: 20px; padding: 20px;
+    background: linear-gradient(160deg, rgba(255,255,255,.13), rgba(255,255,255,.05));
+    border: 1px solid rgba(255,255,255,.16);
+    box-shadow: 0 30px 70px rgba(6, 4, 18, .55);
+  }
+  .panel-top { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: #cfc8ea; }
+  .dot { display: inline-flex; align-items: center; gap: 6px; }
+  .dot i { width: 7px; height: 7px; border-radius: 50%; background: #5fd6a8; box-shadow: 0 0 0 4px rgba(95,214,168,.18); }
+  .panel h3 { margin-top: 16px; font-size: 17px; font-weight: 700; }
+  .row { margin-top: 14px; }
+  .row .label { display: flex; justify-content: space-between; font-size: 12px; color: #b3abcf; margin-bottom: 7px; }
+  .bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #8b7cff, #c0b4ff); }
+  .steps { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .step { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: #d5d0ea; }
+  .step em {
+    width: 18px; height: 18px; border-radius: 6px; font-style: normal; font-size: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(139,124,255,.2); color: #b9adff;
+  }
+  .step.done em { background: rgba(95,214,168,.18); color: #6fe0b4; }
+  .foot {
+    position: absolute; left: 64px; bottom: 46px; display: flex; align-items: center; gap: 16px;
+    font-size: 14px; color: #9d95bd;
+  }
+  .foot b { color: #d9d3f0; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="grid"></div>
+  <div class="wrap">
+    <div class="brand">
+      <span class="mark">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v3M12 18v3M4.2 7.5l2.6 1.5M17.2 15l2.6 1.5M4.2 16.5l2.6-1.5M17.2 9l2.6-1.5"/>
+          <circle cx="12" cy="12" r="4.2"/>
+        </svg>
+      </span>
+      <span><b>超级员工</b><small>SUPER AGENT OS</small></span>
+    </div>
+    <h1>把目标交给 AI，<br /><span>把结果带回企业。</span></h1>
+    <p class="sub">一支懂业务、会协作、能交付的企业级 AI 团队。<br />从内容、获客到成交与复盘，一个指令驱动完整工作流。</p>
+    <div class="chips">
+      <span class="chip">多智能体协作</span>
+      <span class="chip">企业知识调用</span>
+      <span class="chip">关键动作可审批</span>
+    </div>
+    <div class="panel">
+      <div class="panel-top"><span>AI 总控 · 任务执行</span><span class="dot"><i></i>执行中</span></div>
+      <h3>秋季新品增长作战计划</h3>
+      <div class="row"><div class="label"><span>整体进度</span><span>82%</span></div><div class="bar"><i style="width:82%"></i></div></div>
+      <div class="steps">
+        <div class="step done"><em>1</em>内容创作官 · 已输出 7 天内容排期</div>
+        <div class="step done"><em>2</em>获客增长官 · 已筛出 18 条高意向线索</div>
+        <div class="step"><em>3</em>私域销售官 · 正在生成跟进话术</div>
+      </div>
+    </div>
+    <div class="foot"><b>AI 驱动</b><span>·</span><b>人类掌控</b><span>·</span><b>结果导向</b></div>
+  </div>
+</body>
+</html>
