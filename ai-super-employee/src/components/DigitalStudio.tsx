@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardCopy, Download, LoaderCircle, Mic, ScrollText, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
+import { ClipboardCopy, Download, Film, LoaderCircle, Mic, ScrollText, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
 import {
   MEDIA_ROLES,
   canSetRole,
   groupMedia,
   listMedia,
+  importMedia,
   listByRole,
   updateMedia,
   type MediaAsset,
@@ -18,6 +19,7 @@ import {
   generateCopyDrafts,
   generateDigitalPlan,
   loadCopyDrafts,
+  planFromArticle,
   loadSavedDigitalPlans,
   removeCopyDraftSet,
   removeSavedDigitalPlan,
@@ -28,6 +30,18 @@ import {
   type DigitalPlan,
   type StoredDigitalPlan,
 } from "../cloud/digital";
+import { loadTtsConfig, saveTtsConfig, synthesizeVoice, type TtsConfig } from "../cloud/tts";
+import {
+  advanceJob,
+  loadDigitalJobs,
+  loadDigitalProvider,
+  refreshDigitalJob,
+  saveDigitalJobs,
+  saveDigitalProvider,
+  submitDigitalJob,
+  type DigitalJob,
+  type DigitalProviderConfig,
+} from "../cloud/digitalhuman";
 
 const INDUSTRIES = ["餐饮", "美妆", "教育", "家居", "电商", "本地生活", "通用"];
 const DURATIONS = [15, 30, 60];
@@ -61,7 +75,7 @@ function formatTime(ts: number): string {
  * L3 TTS（火山/豆包）与 L4 数字人 API 为适配器后置，本模块保证结构可对接。
  */
 export function DigitalStudio() {
-  const [tab, setTab] = useState<"copy" | "plan" | "roles">("copy");
+  const [tab, setTab] = useState<"copy" | "plan" | "produce" | "roles">("copy");
 
   // L1 文案工坊
   const [source, setSource] = useState<CopySource>("industry");
@@ -80,6 +94,14 @@ export function DigitalStudio() {
   const [plan, setPlan] = useState<DigitalPlan | null>(null);
   const [planTopicEcho, setPlanTopicEcho] = useState("");
   const [savedPlans, setSavedPlans] = useState<StoredDigitalPlan[]>([]);
+  const [planSource, setPlanSource] = useState<"topic" | "article">("topic");
+  const [article, setArticle] = useState("");
+
+  // L3 配音 / L4 出片任务
+  const [ttsConfig, setTtsConfig] = useState<TtsConfig>(() => loadTtsConfig());
+  const [provider, setProvider] = useState<DigitalProviderConfig>(() => loadDigitalProvider());
+  const [jobs, setJobs] = useState<DigitalJob[]>(() => loadDigitalJobs());
+  const [voiceNote, setVoiceNote] = useState("");
 
   // 素材角色
   const [assets, setAssets] = useState<MediaAsset[]>([]);
@@ -104,6 +126,20 @@ export function DigitalStudio() {
     setCopySets(loadCopyDrafts());
     setSavedPlans(loadSavedDigitalPlans());
   }, [refreshMedia]);
+
+  // demo 出片任务自动推进（纯函数更新；真实任务走手动刷新轮询）
+  useEffect(() => {
+    if (!jobs.some((job) => job.demo && (job.status === "queued" || job.status === "running"))) return;
+    const timer = window.setInterval(() => {
+      setJobs((prev) => {
+        const next = prev.map(advanceJob);
+        if (next.every((job, index) => job === prev[index])) return prev;
+        saveDigitalJobs(next);
+        return next;
+      });
+    }, 1200);
+    return () => window.clearInterval(timer);
+  }, [jobs]);
 
   const groups = useMemo(() => groupMedia(assets), [assets]);
   const avatar = useMemo(() => listByRole(assets, "avatar").find((item) => item.kind === "video") ?? null, [assets]);
@@ -146,16 +182,28 @@ export function DigitalStudio() {
   /* ------------------------------ L2 ------------------------------ */
   const runPlan = async () => {
     if (busy) return;
+    if (planSource === "topic" && !planTopic.trim()) {
+      setError("先填写口播主题");
+      return;
+    }
+    if (planSource === "article" && article.trim().length < 40) {
+      setError("长文至少 40 字（保留事实，不贴报价单）");
+      return;
+    }
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      const result = await generateDigitalPlan({ topic: planTopic, industry: planIndustry, duration, brollGroups });
+      const result =
+        planSource === "article"
+          ? await planFromArticle({ article, duration, brollGroups, industry: planIndustry })
+          : await generateDigitalPlan({ topic: planTopic, industry: planIndustry, duration, brollGroups });
+      const echo = planSource === "article" ? result.title : planTopic;
       setPlan(result);
-      setPlanTopicEcho(planTopic);
-      saveDigitalPlan({ topic: planTopic, industry: planIndustry, plan: result });
+      setPlanTopicEcho(echo);
+      saveDigitalPlan({ topic: echo, industry: planIndustry, plan: result });
       setSavedPlans(loadSavedDigitalPlans());
-      notify(result.demo ? "模型不可用，已给出模板方案（结构完整）" : "口播方案已生成并留档");
+      notify(result.demo ? "模型不可用，已给出模板/启发式方案（结构完整）" : "口播方案已生成并留档");
     } catch (err) {
       setError(err instanceof Error ? err.message : "方案生成失败");
     } finally {
@@ -180,6 +228,57 @@ export function DigitalStudio() {
     if (!plan) return;
     downloadFile("sub.srt", buildSrt(plan.segments));
     notify("字幕已导出为 sub.srt（合成脚本按此文件名烧录）");
+  };
+
+  /* --------------------------- L3 配音 / L4 出片 --------------------------- */
+  const runVoice = async () => {
+    if (busy) return;
+    if (!plan) {
+      setError("先到「口播方案」生成方案，再生成配音");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const fullText = plan.segments.map((segment) => segment.script).join("。");
+      const result = await synthesizeVoice(ttsConfig, fullText);
+      const name = `配音-${(planTopicEcho || "未命名").slice(0, 16)}.wav`;
+      const file = new File([result.blob], name, { type: "audio/wav" });
+      await importMedia([file], "配音");
+      await refreshMedia();
+      setVoiceNote(
+        `${result.demo ? "演示" : "真实"}音轨已入库（${result.seconds}s）：${name}；在「素材角色」勾选授权后可标为「声音」`,
+      );
+      notify("配音已生成并入素材库");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "配音生成失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runSubmitJob = async () => {
+    if (!plan) {
+      setError("先生成方案再提交出片任务");
+      return;
+    }
+    let mode = "缺素材";
+    try {
+      mode = buildDigitalRecipe(plan, assets, { shell: "sh" }).mode;
+    } catch {
+      /* 素材不齐时用占位模式名，任务仍可提交 */
+    }
+    const job = await submitDigitalJob(plan.title, mode, provider);
+    const next = [job, ...jobs].slice(0, 10);
+    setJobs(next);
+    saveDigitalJobs(next);
+    notify(job.status === "failed" ? `提交失败：${job.note}` : job.demo ? "演示任务已入队" : "已提交到 L4 服务");
+  };
+
+  const refreshJobs = async () => {
+    const next = await Promise.all(jobs.map((job) => refreshDigitalJob(job, provider)));
+    setJobs(next);
+    saveDigitalJobs(next);
   };
 
   /* --------------------------- 素材角色 --------------------------- */
@@ -218,6 +317,9 @@ export function DigitalStudio() {
           </button>
           <button type="button" className={tab === "plan" ? "active" : ""} onClick={() => setTab("plan")}>
             <Sparkles size={15} />口播方案
+          </button>
+          <button type="button" className={tab === "produce" ? "active" : ""} onClick={() => setTab("produce")}>
+            <Film size={15} />配音·出片
           </button>
           <button type="button" className={tab === "roles" ? "active" : ""} onClick={() => setTab("roles")}>
             <ShieldCheck size={15} />素材角色
@@ -352,9 +454,28 @@ export function DigitalStudio() {
             </div>
 
             <label className="office-field">
-              <span>主题</span>
-              <input value={planTopic} onChange={(event) => setPlanTopic(event.target.value)} placeholder="例：三步讲清社区店引流" />
+              <span>方案来源</span>
+              <select value={planSource} onChange={(event) => setPlanSource(event.target.value as "topic" | "article")}>
+                <option value="topic">主题生成（LLM / 模板降级）</option>
+                <option value="article">长文降维（粘贴正文）</option>
+              </select>
             </label>
+            {planSource === "article" ? (
+              <label className="office-field">
+                <span>长文正文（≥40 字，保留事实）</span>
+                <textarea
+                  rows={6}
+                  value={article}
+                  onChange={(event) => setArticle(event.target.value)}
+                  placeholder="粘贴文章/笔记正文，自动降维成 3~6 段口播分镜"
+                />
+              </label>
+            ) : (
+              <label className="office-field">
+                <span>主题</span>
+                <input value={planTopic} onChange={(event) => setPlanTopic(event.target.value)} placeholder="例：三步讲清社区店引流" />
+              </label>
+            )}
             <div className="office-form-row">
               <label className="office-field">
                 <span>行业</span>
@@ -489,6 +610,151 @@ export function DigitalStudio() {
                 <span>填主题后点「生成口播方案」</span>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------- L3 配音 / L4 出片 ------------------------- */}
+      {tab === "produce" && (
+        <div className="digital-grid">
+          <div className="console-card office-form">
+            <div className="console-card-header">
+              <div>
+                <h2>
+                  <Mic size={16} /> L3 配音（TTS）
+                </h2>
+                <p>demo 本机出占位音轨；拿到火山/豆包 Key 后把 HTTP 端点填进 generic（配置仅存本机，不内置厂商签名）。</p>
+              </div>
+            </div>
+            <label className="office-field">
+              <span>提供方</span>
+              <select
+                value={ttsConfig.provider}
+                onChange={(event) => setTtsConfig({ ...ttsConfig, provider: event.target.value as "demo" | "generic" })}
+              >
+                <option value="demo">demo（本机占位音轨）</option>
+                <option value="generic">generic（自配 HTTP 端点）</option>
+              </select>
+            </label>
+            {ttsConfig.provider === "generic" && (
+              <>
+                <label className="office-field">
+                  <span>服务地址</span>
+                  <input
+                    value={ttsConfig.baseUrl}
+                    onChange={(event) => setTtsConfig({ ...ttsConfig, baseUrl: event.target.value })}
+                    placeholder="https://tts.example.com"
+                  />
+                </label>
+                <div className="office-form-row">
+                  <label className="office-field">
+                    <span>路径</span>
+                    <input value={ttsConfig.path} onChange={(event) => setTtsConfig({ ...ttsConfig, path: event.target.value })} />
+                  </label>
+                  <label className="office-field">
+                    <span>音色</span>
+                    <input value={ttsConfig.voice} onChange={(event) => setTtsConfig({ ...ttsConfig, voice: event.target.value })} />
+                  </label>
+                </div>
+              </>
+            )}
+            <div className="digital-exports">
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => {
+                  saveTtsConfig(ttsConfig);
+                  notify("配音配置已存本机");
+                }}
+              >
+                保存配置
+              </button>
+              <button type="button" className="button button-primary" disabled={busy || !plan} onClick={() => void runVoice()}>
+                {busy ? <LoaderCircle size={15} className="spin" /> : <Mic size={15} />}按当前方案生成配音
+              </button>
+            </div>
+            {voiceNote && <p className="digital-empty-hint">{voiceNote}</p>}
+            {!plan && <p className="digital-empty-hint">先到「口播方案」生成方案（配音时长按方案估算，2~60s）</p>}
+          </div>
+
+          <div className="console-card office-form">
+            <div className="console-card-header">
+              <div>
+                <h2>
+                  <Film size={16} /> L4 出片任务
+                </h2>
+                <p>未配置服务 → 演示任务队列；配置后 submit/poll 直连。真实转码仍走 L2 导出的 ffmpeg 脚本（本机）。</p>
+              </div>
+            </div>
+            <label className="office-field">
+              <span>服务地址（空 = 演示队列）</span>
+              <input
+                value={provider.baseUrl}
+                onChange={(event) => setProvider({ ...provider, baseUrl: event.target.value })}
+                placeholder="https://digital.example.com"
+              />
+            </label>
+            <div className="office-form-row">
+              <label className="office-field">
+                <span>提交路径</span>
+                <input value={provider.submitPath} onChange={(event) => setProvider({ ...provider, submitPath: event.target.value })} />
+              </label>
+              <label className="office-field">
+                <span>轮询路径</span>
+                <input value={provider.pollPath} onChange={(event) => setProvider({ ...provider, pollPath: event.target.value })} />
+              </label>
+            </div>
+            <div className="office-form-row">
+              <label className="office-field">
+                <span>任务号字段</span>
+                <input value={provider.idField} onChange={(event) => setProvider({ ...provider, idField: event.target.value })} />
+              </label>
+              <label className="office-field">
+                <span>状态字段</span>
+                <input value={provider.statusField} onChange={(event) => setProvider({ ...provider, statusField: event.target.value })} />
+              </label>
+              <label className="office-field">
+                <span>完成值</span>
+                <input value={provider.doneValue} onChange={(event) => setProvider({ ...provider, doneValue: event.target.value })} />
+              </label>
+            </div>
+            <div className="digital-exports">
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => {
+                  saveDigitalProvider(provider);
+                  notify("出片服务配置已存本机");
+                }}
+              >
+                保存配置
+              </button>
+              <button type="button" className="button button-primary" disabled={!plan} onClick={() => void runSubmitJob()}>
+                <Film size={15} />提交出片任务
+              </button>
+              <button type="button" className="button button-secondary" disabled={!jobs.length} onClick={() => void refreshJobs()}>
+                刷新进度
+              </button>
+            </div>
+            <ul className="digital-drafts">
+              {jobs.length === 0 && (
+                <li>
+                  <p className="digital-empty-hint">暂无任务；生成方案后可提交（演示队列可见进度推进）</p>
+                </li>
+              )}
+              {jobs.map((job) => (
+                <li key={job.id}>
+                  <span className="digital-draft-index">{job.status === "done" ? "✓" : job.status === "failed" ? "!" : "…"}</span>
+                  <p>
+                    <strong>{job.topic}</strong>
+                    <br />
+                    <span className="digital-empty-hint">
+                      {job.mode} · {job.note || job.status} · {job.progress}%
+                    </span>
+                  </p>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       )}
