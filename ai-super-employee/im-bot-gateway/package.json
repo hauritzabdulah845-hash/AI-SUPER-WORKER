@@ -1,0 +1,11 @@
+{
+  "name": "im-bot-gateway",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "IM 远程指令网关：飞书/HTTP 下达的一句话指令进入队列，控制台拉取后用登录身份执行",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node test/run-test.mjs"
+  }
+}

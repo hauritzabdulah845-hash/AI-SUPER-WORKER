@@ -6,6 +6,7 @@
  * MOCK 模式不真正调用企微接口，发送报文记录在 client.sent 里供断言。
  */
 import os from "node:os";
+import http from "node:http";
 import crypto from "node:crypto";
 import { readFileSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
@@ -202,6 +203,78 @@ async function main() {
   const denied = await fetch(syncUrl(0, "wrong-secret"));
   check("同步接口鉴权", denied.status === 403, `status=${denied.status}`);
   sync.server.close();
+
+  // AI 兜底必须排在默认规则之前：关键词未命中且开启 aiFallback 时，
+  // AI 先在规则里挑一个；只有 AI 也给不出才落默认话术。
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes("api.deepseek.com")) {
+      return new Response(JSON.stringify({ choices: [{ message: { content: "demo" } }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return realFetch(url, init);
+  };
+  try {
+    await testMessage(
+      "AI 兜底先于默认规则",
+      "最近忙不忙",
+      "msg-ai-fallback-1",
+      (sent) => {
+        const first = sent[0];
+        return sent.length === 1 && first.msgtype === "text" && first.text.content.includes("体验入口");
+      },
+      { aiFallback: true, deepseekKey: "test-key" },
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
+  // 同步接口支持 x-admin-secret 请求头鉴权（密钥不再必须出现在 URL 里）
+  const headerAuth = await start(baseConfig());
+  const headerOk = await fetch(`http://127.0.0.1:${headerAuth.port}/api/sync?since=0`, {
+    headers: { "x-admin-secret": "test-admin-secret" },
+  });
+  const headerBad = await fetch(`http://127.0.0.1:${headerAuth.port}/api/sync?since=0`, {
+    headers: { "x-admin-secret": "wrong" },
+  });
+  const queryOk = await fetch(`http://127.0.0.1:${headerAuth.port}/api/sync?secret=test-admin-secret&since=0`);
+  check(
+    "同步接口请求头鉴权（兼容 query）",
+    headerOk.status === 200 && headerBad.status === 403 && queryOk.status === 200,
+    `header=${headerOk.status} bad=${headerBad.status} query=${queryOk.status}`,
+  );
+  headerAuth.server.close();
+
+  // 高意向实时提醒：客户阶段跃迁进「报价」时，应向企微群机器人 webhook 推一条
+  const alertBodies = [];
+  const alertServer = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => { alertBodies.push(body); res.writeHead(204); res.end(); });
+  });
+  await new Promise((resolve) => alertServer.listen(0, resolve));
+  const alertPort = alertServer.address().port;
+  const alertCfg = baseConfig({
+    alertWebhook: `http://127.0.0.1:${alertPort}/hook`,
+    mockMessages: [
+      { msgid: "msg-alert-1", open_kfid: "wkTEST123", external_userid: "wmHOT1", origin: 3, msgtype: "text", text: { content: "你们专业版多少钱？" } },
+      { msgid: "msg-alert-2", open_kfid: "wkTEST123", external_userid: "wmHOT2", origin: 3, msgtype: "text", text: { content: "在吗" } },
+    ],
+  });
+  const alert = await start(alertCfg);
+  await postEvent(alert.port, buildEvent());
+  await sleep(400);
+  const hotAlerts = alertBodies.filter((body) => body.includes("高意向客户提醒"));
+  const coldAlerts = alertBodies.filter((body) => body.includes("wmHOT2"));
+  check(
+    "高意向跃迁推送提醒、普通消息不推",
+    hotAlerts.length === 1 && hotAlerts[0].includes("报价") && coldAlerts.length === 0,
+    `推送 ${alertBodies.length} 条，其中高意向 ${hotAlerts.length} 条`,
+  );
+  alert.server.close();
+  alertServer.close();
 
   // 规则话术模板变量：未知客户称呼用「你」，已知用名字
   check("模板变量 {{name}} 替换", renderTemplate("你好{{name}}，我们按项目报价", null) === "你好你，我们按项目报价" && renderTemplate("{{name}}你好", { named: true, name: "王总" }) === "王总你好");

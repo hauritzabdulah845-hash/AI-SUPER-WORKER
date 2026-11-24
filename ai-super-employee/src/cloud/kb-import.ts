@@ -1,4 +1,4 @@
-import { insertKnowledgeDoc } from "./api";
+import { insertKnowledgeDoc, loadKnowledgeSourceIndex, updateKnowledgeDoc } from "./api";
 
 /**
  * 知识库文件夹导入。
@@ -316,6 +316,8 @@ export async function readItem(handle: FsDir, item: KbFileItem): Promise<KbFileI
 
 export interface ImportOutcome {
   imported: number;
+  /** 同源文件已存在时覆盖更新的数量（重复导入不产生重复资料）。 */
+  updated: number;
   failed: number;
   errors: string[];
 }
@@ -327,8 +329,11 @@ export async function importItems(
   options: { folderName: string; ownerName?: string | null; onProgress?: (done: number, total: number, name: string) => void },
 ): Promise<ImportOutcome> {
   let imported = 0;
+  let updated = 0;
   let failed = 0;
   const errors: string[] = [];
+  // 一次查询拿到「来源路径 → 文档 id」，同名文件重复导入时覆盖更新。
+  const sourceIndex = await loadKnowledgeSourceIndex().catch(() => new Map<string, number>());
 
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index];
@@ -340,14 +345,25 @@ export async function importItems(
       continue;
     }
     try {
-      await insertKnowledgeDoc({
-        title: prepared.title.slice(0, 120),
-        docType: inferDocType(prepared.name, prepared.dir),
-        content: prepared.content,
-        source: `${options.folderName}/${prepared.path}`.slice(0, 200),
-        ownerName: options.ownerName ?? null,
-      });
-      imported += 1;
+      const title = prepared.title.slice(0, 120);
+      const docType = inferDocType(prepared.name, prepared.dir);
+      const source = `${options.folderName}/${prepared.path}`.slice(0, 200);
+      const chunks = Math.max(1, Math.ceil(prepared.content.replace(/\s/g, "").length / 300));
+      const existingId = sourceIndex.get(source);
+      if (existingId !== undefined) {
+        await updateKnowledgeDoc(existingId, { title, docType, content: prepared.content, chunks });
+        updated += 1;
+      } else {
+        const row = await insertKnowledgeDoc({
+          title,
+          docType,
+          content: prepared.content,
+          source,
+          ownerName: options.ownerName ?? null,
+        });
+        if (row?.id) sourceIndex.set(source, row.id);
+        imported += 1;
+      }
     } catch (error) {
       failed += 1;
       errors.push(`${item.name}：${error instanceof Error ? error.message : "写入失败"}`);
@@ -356,7 +372,7 @@ export async function importItems(
 
   options.onProgress?.(items.length, items.length, "");
   saveFolderBinding({ name: options.folderName, updatedAt: new Date().toISOString() });
-  return { imported, failed, errors };
+  return { imported, updated, failed, errors };
 }
 
 /** 降级方案：<input webkitdirectory> 选中的文件列表。 */
@@ -395,8 +411,10 @@ export async function importFromFileMap(
   options: { folderName: string; ownerName?: string | null; onProgress?: (done: number, total: number, name: string) => void },
 ): Promise<ImportOutcome> {
   let imported = 0;
+  let updated = 0;
   let failed = 0;
   const errors: string[] = [];
+  const sourceIndex = await loadKnowledgeSourceIndex().catch(() => new Map<string, number>());
 
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index];
@@ -414,14 +432,25 @@ export async function importFromFileMap(
         errors.push(`${item.name}：未提取到文本`);
         continue;
       }
-      await insertKnowledgeDoc({
-        title: item.title.slice(0, 120),
-        docType: inferDocType(item.name, item.dir),
-        content: text,
-        source: `${options.folderName}/${item.path}`.slice(0, 200),
-        ownerName: options.ownerName ?? null,
-      });
-      imported += 1;
+      const title = item.title.slice(0, 120);
+      const docType = inferDocType(item.name, item.dir);
+      const source = `${options.folderName}/${item.path}`.slice(0, 200);
+      const chunks = Math.max(1, Math.ceil(text.replace(/\s/g, "").length / 300));
+      const existingId = sourceIndex.get(source);
+      if (existingId !== undefined) {
+        await updateKnowledgeDoc(existingId, { title, docType, content: text, chunks });
+        updated += 1;
+      } else {
+        const row = await insertKnowledgeDoc({
+          title,
+          docType,
+          content: text,
+          source,
+          ownerName: options.ownerName ?? null,
+        });
+        if (row?.id) sourceIndex.set(source, row.id);
+        imported += 1;
+      }
     } catch (error) {
       failed += 1;
       errors.push(`${item.name}：${error instanceof Error ? error.message : "导入失败"}`);
@@ -429,5 +458,5 @@ export async function importFromFileMap(
   }
 
   options.onProgress?.(items.length, items.length, "");
-  return { imported, failed, errors };
+  return { imported, updated, failed, errors };
 }

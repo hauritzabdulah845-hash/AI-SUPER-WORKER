@@ -500,6 +500,49 @@ export async function getKnowledgeDoc(docId: number): Promise<KnowledgeRow> {
   return (data ?? [])[0] as KnowledgeRow;
 }
 
+/**
+ * 导入前建一次 source 索引（一次查询，不是每文件一查）。
+ * 同一个文件重复导入时走「更新」而不是「再插一条」，否则每次重新扫描
+ * 都会把资料翻倍，知识库越用越脏。查询失败时返回空表，导入退回旧行为。
+ */
+export async function loadKnowledgeSourceIndex(): Promise<Map<string, number>> {
+  const owner = await requireOwner();
+  const { data, error } = await cloud.database
+    .from("knowledge_docs")
+    .select("id,source")
+    .eq("owner_id", owner.id)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) fail(error, "知识库索引读取失败");
+  const index = new Map<string, number>();
+  for (const row of (data ?? []) as { id: number; source: string | null }[]) {
+    // 手动录入的 source 都是「手动录入」，不能当唯一键，跳过。
+    if (row.source && row.source !== "手动录入" && !index.has(row.source)) {
+      index.set(row.source, row.id);
+    }
+  }
+  return index;
+}
+
+/** 覆盖已有资料的正文与元信息（用于同源文件的重新导入）。 */
+export async function updateKnowledgeDoc(
+  docId: number,
+  patch: { title: string; docType: string; content: string; chunks: number },
+): Promise<void> {
+  const owner = await requireOwner();
+  const { error } = await cloud.database
+    .from("knowledge_docs")
+    .update({
+      title: patch.title,
+      doc_type: patch.docType,
+      content: patch.content,
+      chunks: patch.chunks,
+    } as never)
+    .eq("id", docId)
+    .eq("owner_id", owner.id);
+  if (error) fail(error, "知识更新失败");
+}
+
 export interface KnowledgeSnippet {
   title: string;
   docType: string;
@@ -534,7 +577,10 @@ export async function loadKnowledgeContext(goal: string, budget = 6000): Promise
       .select("title,doc_type,content,created_at")
       .eq("owner_id", owner.id)
       .order("created_at", { ascending: false })
-      .limit(30);
+      // 30 份的上限在文件夹批量导入后立刻失效（一次就能导上百份）：
+      // 旧资料哪怕关键词最相关也永远进不了上下文。放宽到 100 份，
+      // 单份正文仍受下方 1600 字/总预算 6000 字约束，提示词不会爆。
+      .limit(100);
     if (error) return [];
 
     const rows = (data ?? []) as { title?: string; doc_type?: string; content?: string }[];
@@ -747,9 +793,14 @@ export interface KfMessageRow {
   created_at: string;
 }
 
+/** 高意向阶段：命中时线索意向自动升为「高意向」（人工仍可改）。 */
+function isHighIntentStage(stage: string) {
+  return stage === "成交" || stage === "报价" || stage === "试用" || stage === "已预约";
+}
+
 /** 企微侧粗判的阶段映射成线索意向等级，人工可在线索里再改。 */
 function intentOfStage(stage: string) {
-  if (stage === "成交" || stage === "报价" || stage === "试用" || stage === "已预约") return "高意向";
+  if (isHighIntentStage(stage)) return "高意向";
   if (stage === "培育") return "中意向";
   return "中意向";
 }
@@ -758,9 +809,13 @@ function intentOfStage(stage: string) {
  * 按 external_userid 认领客户：
  * 已有线索就更新「最新需求」，没有就建一条来源=企业微信的线索。
  * 身份打通的落点在这里——企微里的客户从这里开始拥有系统内的线索 id。
+ *
+ * touchNeed：只有本次同步带来新对话的客户才覆盖 need。否则每次全量同步都会
+ * 用企微侧的 lastText 把销售手工编辑过的「最新需求」冲掉（数据被静默覆盖）。
  */
 export async function upsertLeadByExternalId(
   customer: KfCustomerPayload,
+  options: { touchNeed?: boolean } = {},
 ): Promise<{ leadId: number; created: boolean }> {
   const owner = await requireOwner();
   const { data, error } = await cloud.database
@@ -773,13 +828,20 @@ export async function upsertLeadByExternalId(
 
   const existing = (data ?? [])[0] as { id: number } | undefined;
   if (existing) {
-    if (customer.lastText) {
-      const patch = await cloud.database
-        .from("leads")
-        .update({ need: customer.lastText.slice(0, 200) } as never)
-        .eq("id", existing.id)
-        .eq("owner_id", owner.id);
-      if (patch.error) fail(patch.error, "企微客户需求更新失败");
+    if (options.touchNeed !== false) {
+      const patchBody: Record<string, unknown> = {};
+      if (customer.lastText) patchBody.need = customer.lastText.slice(0, 200);
+      // 高意向实时提醒的落点：客户一旦进入报价/成交/试用阶段，标签自动升级，
+      // 销售在列表里一眼能看到该重点跟进谁（仍可手工改回）。
+      if (isHighIntentStage(customer.stage)) patchBody.intent = "高意向";
+      if (Object.keys(patchBody).length > 0) {
+        const patch = await cloud.database
+          .from("leads")
+          .update(patchBody as never)
+          .eq("id", existing.id)
+          .eq("owner_id", owner.id);
+        if (patch.error) fail(patch.error, "企微客户需求更新失败");
+      }
     }
     return { leadId: existing.id, created: false };
   }

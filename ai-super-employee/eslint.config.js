@@ -20,4 +20,13 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // shadcn/ui 组件库惯例：同一文件既导出组件，也导出 variants / 工具函数
+    // （如 `export { Button, buttonVariants }`）。这类共享常量放独立文件对
+    // HMR 没有实际收益，反而会污染组件库文件结构，故对 ui 目录关闭该规则。
+    files: ['src/components/ui/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])

@@ -1,0 +1,6 @@
+{
+  "port": 8788,
+  "adminSecret": "改成一个只有你知道的字符串",
+  "feishuVerificationToken": "",
+  "feishuEncryptKey": ""
+}

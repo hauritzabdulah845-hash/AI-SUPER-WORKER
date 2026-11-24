@@ -145,6 +145,18 @@ async function collectWithRetry(
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
+/**
+ * 给新模块（GEO 工作台、聚合发布等）复用的单轮 LLM 调用：
+ * 与任务执行走同一套模型选择与退避重试，配额/通道行为完全一致。
+ */
+export async function askLLM(
+  messages: { role: string; content: string }[],
+  options: { json?: boolean; signal?: AbortSignal } = {},
+): Promise<{ text: string; tokens: number }> {
+  const model = await pickModel();
+  return collectWithRetry(messages, model.id, options);
+}
+
 const fallbackPlan = { title: "业务增长作战任务", domain: "综合业务", steps: DEFAULT_STEPS };
 
 function parsePlan(raw: string): { title: string; domain: string; steps: { agent: string; action: string }[] } {
