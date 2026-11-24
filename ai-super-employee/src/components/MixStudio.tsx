@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   Music,
   Scissors,
+  Sparkles,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import {
   type MixPlan,
   type StoredMixPlan,
 } from "../cloud/mixcut";
+import { SUB_STYLES, buildAss, findSubStyle, styleFromPrompt, type SubStyle } from "../cloud/substyle";
 
 const STYLES = ["口播向", "产品展示", "氛围向"];
 const DURATIONS = [15, 30, 60];
@@ -78,6 +80,10 @@ export function MixStudio() {
   const [notice, setNotice] = useState("");
   const [plan, setPlan] = useState<MixPlan | null>(null);
   const [saved, setSaved] = useState<StoredMixPlan[]>([]);
+  const [subStyleId, setSubStyleId] = useState("plain");
+  const [stylePrompt, setStylePrompt] = useState("");
+  const [customStyle, setCustomStyle] = useState<SubStyle | null>(null);
+  const effectiveSubStyle = customStyle ?? findSubStyle(subStyleId);
 
   useEffect(() => {
     setSaved(loadSavedPlans());
@@ -172,6 +178,25 @@ export function MixStudio() {
     if (!plan) return;
     downloadFile(`混剪字幕-${new Date().toISOString().slice(0, 10)}.srt`, buildSrt(plan.scenes));
     setNotice("字幕已导出（.srt）");
+  };
+
+  const exportAss = () => {
+    if (!plan) return;
+    downloadFile(`混剪样式-${new Date().toISOString().slice(0, 10)}.ass`, buildAss(plan.scenes, effectiveSubStyle));
+    setNotice(
+      `样式字幕已导出（${effectiveSubStyle.label}）；烧录时把文件改名为 sub.ass，或用 -vf ass=文件名.ass`,
+    );
+  };
+
+  const applyStylePrompt = () => {
+    if (!stylePrompt.trim()) {
+      setError("先填写样式提示词，例：底部紫色描边加粗");
+      return;
+    }
+    const generated = styleFromPrompt(stylePrompt);
+    setCustomStyle(generated);
+    setSubStyleId("custom");
+    setNotice(`已按提示词生成样式「${generated.label}」（点「样式 .ass」导出）`);
   };
 
   const exportRecipe = (shell: "sh" | "bat") => {
@@ -332,8 +357,38 @@ export function MixStudio() {
             <div className="mix-export">
               <button type="button" className="button button-secondary" onClick={exportAll}><Download size={14} />方案 .md</button>
               <button type="button" className="button button-secondary" onClick={exportSrt}><Download size={14} />字幕 .srt</button>
+              <button type="button" className="button button-secondary" onClick={exportAss}><Download size={14} />样式 .ass</button>
               <button type="button" className="button button-primary" onClick={() => exportRecipe("sh")}><Download size={14} />ffmpeg .sh</button>
               <button type="button" className="button button-secondary" onClick={() => exportRecipe("bat")}><Download size={14} />.bat</button>
+            </div>
+            <div className="digital-exports">
+              <label className="office-field" style={{ minWidth: 220 }}>
+                <span>字幕样式模板</span>
+                <select
+                  value={subStyleId}
+                  onChange={(event) => {
+                    setSubStyleId(event.target.value);
+                    if (event.target.value !== "custom") setCustomStyle(null);
+                  }}
+                >
+                  {SUB_STYLES.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                  {customStyle && <option value="custom">自定义：{customStyle.label}</option>}
+                </select>
+              </label>
+              <input
+                className="digital-style-prompt"
+                value={stylePrompt}
+                onChange={(event) => setStylePrompt(event.target.value)}
+                placeholder="提示词生成样式：底部紫色描边加粗"
+              />
+              <button type="button" className="button button-secondary" onClick={applyStylePrompt}>
+                <Sparkles size={14} />提示词生成
+              </button>
+              <span className="digital-empty-hint">{effectiveSubStyle.label} · {effectiveSubStyle.desc}</span>
             </div>
           </div>
 

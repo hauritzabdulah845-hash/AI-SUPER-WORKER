@@ -538,8 +538,9 @@ function pickRoleAsset(assets: MediaAsset[], role: MediaRole, kind: MediaAsset["
 export function buildDigitalRecipe(
   plan: DigitalPlan,
   assets: MediaAsset[],
-  options: { shell: "sh" | "bat" } = { shell: "sh" },
+  options: { shell: "sh" | "bat"; subFormat?: "srt" | "ass" } = { shell: "sh" },
 ): DigitalRecipe {
+  const subFormat = options.subFormat ?? "srt";
   const avatar = pickRoleAsset(assets, "avatar", "video");
   const audio = pickRoleAsset(assets, "voice", "audio");
   const groups = groupMedia(assets);
@@ -589,11 +590,12 @@ export function buildDigitalRecipe(
     lines.push("set -euo pipefail");
     lines.push('cd "$(dirname "$0")"');
   }
-  lines.push(isBat ? "rem 请把本脚本、sub.srt 与素材放同一目录" : "# 请把本脚本、sub.srt 与素材放同一目录");
+  const subFile = subFormat === "ass" ? "sub.ass" : "sub.srt";
+  lines.push(isBat ? `rem 请把本脚本、${subFile} 与素材放同一目录` : `# 请把本脚本、${subFile} 与素材放同一目录`);
   lines.push(
     isBat
-      ? "rem 用法：先从「数字人工坊」导出字幕为 sub.srt，再双击或 cmd 运行本脚本"
-      : "# 用法：先从「数字人工坊」导出字幕为 sub.srt，再执行 bash make-digital.sh",
+      ? `rem 用法：先从「数字人工坊」导出字幕为 ${subFile}，再双击或 cmd 运行本脚本`
+      : `# 用法：先从「数字人工坊」导出字幕为 ${subFile}，再执行 bash make-digital.sh`,
   );
   lines.push("");
 
@@ -652,7 +654,11 @@ export function buildDigitalRecipe(
     parts.push(`${cur}[${overlayStartIndex + index}:v]overlay=enable='between(t,${overlay.from.toFixed(2)},${overlay.to.toFixed(2)})'${out}`);
     cur = out;
   });
-  parts.push(`${cur}subtitles=sub.srt:force_style='${SRT_STYLE}'[vout]`);
+  parts.push(
+    subFormat === "ass"
+      ? `${cur}ass=sub.ass[vout]`
+      : `${cur}subtitles=sub.srt:force_style='${SRT_STYLE}'[vout]`,
+  );
 
   lines.push(`ffmpeg -y${cont}`);
   inputs.forEach((input, index) => {
@@ -669,8 +675,12 @@ export function buildDigitalRecipe(
   lines.push("");
   lines.push(
     isBat
-      ? "rem 输出：digital-out.mp4；如缺字幕样式字体，改 sub.srt 同名字体名"
-      : "# 输出：digital-out.mp4；如缺字幕样式字体，改 SRT_STYLE 里的字体名",
+      ? subFormat === "ass"
+        ? "rem 输出：digital-out.mp4；样式在 sub.ass（样式模板导出），字体/字号改 sub.ass 的 Style 行"
+        : "rem 输出：digital-out.mp4；如缺字幕样式字体，改 sub.srt 同名字体名"
+      : subFormat === "ass"
+        ? "# 输出：digital-out.mp4；样式在 sub.ass（样式模板导出），字体/字号改 sub.ass 的 Style 行"
+        : "# 输出：digital-out.mp4；如缺字幕样式字体，改 SRT_STYLE 里的字体名",
   );
   if (isBat) lines.push("endlocal");
 
