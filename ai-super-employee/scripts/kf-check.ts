@@ -3,11 +3,15 @@
  * 运行：npm run test:kf
  */
 import {
+  filterRecipients,
+  isHighIntent,
   matchDefaultRule,
   matchKeywordRule,
+  parseListInput,
   renderTemplate,
   seedRules,
   simulateReply,
+  type KfRule,
 } from "../src/cloud/kfchannels";
 import {
   createBroadcast,
@@ -97,6 +101,43 @@ check(
   "dueBroadcasts 只挑到点的",
   dueBroadcasts([scheduled, future, draft], now).length === 1,
 );
+
+// —— 名单（白/黑名单）与意向词（第十二批）——
+const parsed = parseListInput("wmA1,王总,多次询价\nwmB2,李经理\n\nwmA1\nwmC3,赵四,备注,多余逗号段");
+check("粘贴解析：行/逗号/去重", parsed.length === 3 && parsed[0].name === "王总" && parsed[0].note === "多次询价", JSON.stringify(parsed.map((r) => r.id)));
+check("粘贴解析：空行忽略", parseListInput("\n\n  \n").length === 0);
+
+const listFixture = {
+  blacklist: [{ id: "wmBAD", addedAt: "" }],
+  whitelist: [{ id: "wmOK", addedAt: "" }],
+};
+const rowsFixture = [
+  { external_userid: "wmBAD", name: "黑" },
+  { external_userid: "wmOK", name: "白内" },
+  { external_userid: "wmOTHER", name: "白外" },
+  { external_userid: null, name: "无ID" },
+  { external_userid: "", name: "空ID" },
+];
+const filtered = filterRecipients(rowsFixture, listFixture);
+check("黑名单被挡", filtered.blockedBlack === 1, JSON.stringify(filtered));
+check("白名单非空只留名单内", filtered.blockedWhite === 1 && filtered.kept.length === 1 && filtered.kept[0].name === "白内");
+const noWhite = filterRecipients(rowsFixture, { blacklist: [], whitelist: [] });
+check("白名单为空不过滤", noWhite.kept.length === 3 && noWhite.blockedWhite === 0);
+check("无ID行交由发送环节", noWhite.kept.every((row) => row.external_userid));
+
+check("高意向词命中", isHighIntent("你们多少钱") && isHighIntent("我想签合同合作") && isHighIntent("先试用一下"));
+check("普通消息不报意向", !isHighIntent("今天天气不错") && !isHighIntent(""));
+
+const attachRules: KfRule[] = [
+  ...seedRules().map((rule) => (rule.id === "fallback" ? { ...rule, attachmentName: undefined } : rule)),
+  { id: "manual", name: "发手册", keywords: ["手册"], reply: "手册发你了", enabled: true, isDefault: false, attachmentName: "使用手册.pdf" },
+];
+const attachHit = simulateReply(attachRules, "发一下手册", null);
+check("模拟器带附件", attachHit.attachment === "使用手册.pdf" && attachHit.reply === "手册发你了", JSON.stringify(attachHit));
+const intentHit = simulateReply(seedRules(), "多少钱", null);
+check("模拟器标高意向", intentHit.intent === true);
+const calmHit = simulateReply(seedRules(), "明天几点开门", null);
+check("普通消息无意向标记", calmHit.intent === false);
 
 console.log(`\n${failed === 0 ? "全部通过" : `${failed} 项失败`}`);
 process.exit(failed === 0 ? 0 : 1);

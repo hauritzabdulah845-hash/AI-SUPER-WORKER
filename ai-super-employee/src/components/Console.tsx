@@ -1926,7 +1926,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
             <BroadcastCenter leads={leads} kfBaseUrl={kfConfig.baseUrl} kfSecret={kfConfig.secret} />
           )}
 
-          {activeNav === "客服渠道" && <ServiceChannels />}
+          {activeNav === "客服渠道" && <ServiceChannels kfBaseUrl={kfConfig.baseUrl} kfSecret={kfConfig.secret} />}
 
           {activeNav === "GEO 工作台" && (
             <GeoWorkbench knowledge={knowledge} />

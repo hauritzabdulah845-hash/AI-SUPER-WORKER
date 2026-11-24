@@ -13,6 +13,7 @@ import {
   upsertBroadcast,
   type BroadcastPlan,
 } from "../cloud/broadcast";
+import { filterRecipients, loadLists } from "../cloud/kfchannels";
 
 const STAGE_OPTIONS = ["新建", "跟进中", "已预约", "已成交"];
 const INTENT_OPTIONS = ["高意向", "中意向", "低意向"];
@@ -275,6 +276,13 @@ export function BroadcastCenter(props: { leads: LeadRow[]; kfBaseUrl: string; kf
             <p className="broadcast-preview">
               <Users size={13} /> 命中 {preview.matched.length} 条线索 · 可送达 {preview.deliverable.length} 条
               {preview.noExternalId.length > 0 && ` · ${preview.noExternalId.length} 条无企微ID（发送时跳过）`}
+              {(() => {
+                const { blockedBlack, blockedWhite } = filterRecipients(preview.deliverable, loadLists());
+                const parts: string[] = [];
+                if (blockedBlack) parts.push(`${blockedBlack} 条黑名单将跳过`);
+                if (blockedWhite) parts.push(`${blockedWhite} 条不在白名单将过滤`);
+                return parts.length ? ` · ${parts.join(" · ")}` : "";
+              })()}
             </p>
           )}
 

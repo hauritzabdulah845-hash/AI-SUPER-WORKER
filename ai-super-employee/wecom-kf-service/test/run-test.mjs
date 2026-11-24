@@ -42,8 +42,8 @@ function baseConfig(overrides = {}) {
   };
 }
 
-async function start(config) {
-  const { server, client } = createService({ config, rules, logger: silent });
+async function start(config, customRules = rules) {
+  const { server, client } = createService({ config, rules: customRules, logger: silent });
   await new Promise((resolve) => server.listen(0, resolve));
   return { server, client, port: server.address().port };
 }
@@ -321,6 +321,132 @@ async function main() {
   });
   check("群发空参数被拒绝", bcEmpty.status === 400, `status=${bcEmpty.status}`);
   bc.server.close();
+
+  // —— 名单与意向（竞品差距 11.2#8 余项：白/黑名单、意向提醒）——
+  const adminHeaders = { "Content-Type": "application/json", "x-admin-secret": "test-admin-secret" };
+
+  // 1. 名单接口：鉴权 + 初始为空 + 写入
+  const lm = await start(baseConfig());
+  const lDenied = await fetch(`http://127.0.0.1:${lm.port}/api/lists`);
+  const lEmpty = await fetch(`http://127.0.0.1:${lm.port}/api/lists`, { headers: adminHeaders });
+  const lEmptyPayload = await lEmpty.json();
+  check(
+    "名单接口鉴权与初始为空",
+    lDenied.status === 403 && lEmpty.status === 200 && lEmptyPayload.blacklist.length === 0 && lEmptyPayload.whitelist.length === 0,
+    `denied=${lDenied.status}`,
+  );
+  const lAdd = await fetch(`http://127.0.0.1:${lm.port}/api/lists`, {
+    method: "POST",
+    headers: adminHeaders,
+    body: JSON.stringify({ kind: "blacklist", action: "add", entries: [{ id: "wmBAD1", name: "黑名单客户" }] }),
+  });
+  const lAddPayload = await lAdd.json();
+  check(
+    "黑名单写入与去重",
+    lAddPayload.ok === true && lAddPayload.blacklist.length === 1 && lAddPayload.blacklist[0].id === "wmBAD1",
+    JSON.stringify(lAddPayload.blacklist ?? lAddPayload),
+  );
+  await fetch(`http://127.0.0.1:${lm.port}/api/lists`, {
+    method: "POST",
+    headers: adminHeaders,
+    body: JSON.stringify({ kind: "whitelist", action: "add", entries: [{ id: "wmGOOD1" }] }),
+  });
+
+  // 2. 群发名单门禁：黑名单恒跳过、白名单非空只发名单内
+  const lmBc = await fetch(`http://127.0.0.1:${lm.port}/api/broadcast`, {
+    method: "POST",
+    headers: adminHeaders,
+    body: JSON.stringify({
+      content: "名单测试",
+      recipients: [
+        { name: "黑名单", external_userid: "wmBAD1" },
+        { name: "白名单内", external_userid: "wmGOOD1" },
+        { name: "白名单外", external_userid: "wmOTHER" },
+      ],
+    }),
+  });
+  const lmPayload = await lmBc.json();
+  const byName = Object.fromEntries((lmPayload.results ?? []).map((row) => [row.name, row]));
+  check(
+    "群发黑名单跳过",
+    byName["黑名单"]?.status === "skipped" && byName["黑名单"]?.detail.includes("黑名单"),
+    JSON.stringify(lmPayload.summary ?? lmPayload),
+  );
+  check(
+    "群发白名单门禁",
+    byName["白名单内"]?.status === "demo" && byName["白名单外"]?.status === "skipped" && byName["白名单外"]?.detail.includes("白名单"),
+    JSON.stringify(lmPayload.summary ?? lmPayload),
+  );
+  lm.server.close();
+
+  // 3. 黑名单不自动回复，但消息仍留档
+  const br = await start(
+    baseConfig({
+      mockMessages: [
+        { msgid: "msg-black-1", open_kfid: "wkTEST123", external_userid: "wmBAD1", origin: 3, msgtype: "text", text: { content: "多少钱" } },
+      ],
+    }),
+  );
+  await fetch(`http://127.0.0.1:${br.port}/api/lists`, {
+    method: "POST",
+    headers: adminHeaders,
+    body: JSON.stringify({ kind: "blacklist", action: "add", entries: [{ id: "wmBAD1" }] }),
+  });
+  await postEvent(br.port, buildEvent());
+  await sleep(300);
+  check("黑名单客户不自动回复", br.client.sent.length === 0, `sent=${br.client.sent.length}`);
+  const brSync = await fetch(`http://127.0.0.1:${br.port}/api/sync?secret=test-admin-secret&since=0`);
+  const brSyncText = await brSync.text();
+  check("黑名单消息仍入站留档", brSyncText.includes("多少钱"), `len=${brSyncText.length}`);
+  br.server.close();
+
+  // 4. 关键词→附件规则：正文随消息发出 + 附件记录
+  const attachRules = [
+    { id: "manual", keywords: ["手册"], reply: { type: "attachment", content: "使用手册发你了，有问题随时问", fileName: "使用手册.pdf" } },
+    { id: "fallback", isDefault: true, reply: { type: "text", content: "收到" } },
+  ];
+  const at = await start(
+    baseConfig({
+      mockMessages: [
+        { msgid: "msg-att-1", open_kfid: "wkTEST123", external_userid: "wmATT1", origin: 3, msgtype: "text", text: { content: "发一下使用手册" } },
+      ],
+    }),
+    attachRules,
+  );
+  await postEvent(at.port, buildEvent());
+  await sleep(300);
+  check(
+    "附件规则：正文+附件记录",
+    at.client.sent.some((item) => item.kind === "attachment" && item.fileName === "使用手册.pdf") &&
+      at.client.sent.some((item) => item.msgtype === "text" && String(item.text?.content ?? "").includes("手册")),
+    JSON.stringify(at.client.sent.map((item) => item.kind ?? item.msgtype)),
+  );
+  at.server.close();
+
+  // 5. 意向提醒：阶段跃迁留档、同阶段去重、可清空
+  const it = await start(
+    baseConfig({
+      mockMessages: [
+        { msgid: "msg-int-1", open_kfid: "wkTEST123", external_userid: "wmINT1", origin: 3, msgtype: "text", text: { content: "多少钱" } },
+        { msgid: "msg-int-2", open_kfid: "wkTEST123", external_userid: "wmINT1", origin: 3, msgtype: "text", text: { content: "有优惠吗" } },
+      ],
+    }),
+  );
+  await postEvent(it.port, buildEvent());
+  await sleep(300);
+  const itList = await fetch(`http://127.0.0.1:${it.port}/api/intents`, { headers: adminHeaders }).then((r) => r.json());
+  check(
+    "意向事件：跃迁入报价留档且同阶段不重复",
+    itList.ok === true && itList.intents.length === 1 && itList.intents[0].stage === "报价" && itList.intents[0].text.includes("多少钱"),
+    JSON.stringify(itList.intents ?? itList),
+  );
+  const itClear = await fetch(`http://127.0.0.1:${it.port}/api/intents`, {
+    method: "POST",
+    headers: adminHeaders,
+    body: JSON.stringify({ clear: true }),
+  }).then((r) => r.json());
+  check("意向事件可清空", itClear.ok === true && itClear.intents.length === 0, JSON.stringify(itClear.intents ?? itClear));
+  it.server.close();
 
   console.log(`\n${failed === 0 ? "全部通过" : `${failed} 项失败`}`);
   process.exit(failed === 0 ? 0 : 1);
