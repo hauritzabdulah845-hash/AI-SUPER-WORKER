@@ -13,7 +13,8 @@
     "test:office": "tsx scripts/office-check.ts",
     "test:kf": "tsx scripts/kf-check.ts",
     "test:digital": "tsx scripts/digital-check.ts",
-    "test:analysis": "tsx scripts/analysis-check.ts"
+    "test:analysis": "tsx scripts/analysis-check.ts",
+    "test:style": "tsx scripts/style-check.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

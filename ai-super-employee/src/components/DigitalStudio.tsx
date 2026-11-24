@@ -31,6 +31,7 @@ import {
   type StoredDigitalPlan,
 } from "../cloud/digital";
 import { loadTtsConfig, saveTtsConfig, synthesizeVoice, type TtsConfig } from "../cloud/tts";
+import { SUB_STYLES, buildAss, findSubStyle, styleFromPrompt, type SubStyle } from "../cloud/substyle";
 import {
   advanceJob,
   loadDigitalJobs,
@@ -119,6 +120,10 @@ export function DigitalStudio() {
   const [visualConfig, setVisualConfig] = useState<VisualConfig>(() => loadVisualConfig());
   const [analyses, setAnalyses] = useState<AssetAnalysis[]>(() => loadAnalyses());
   const [bindings, setBindings] = useState<BindingSuggestion[]>([]);
+  const [subStyleId, setSubStyleId] = useState("plain");
+  const [stylePrompt, setStylePrompt] = useState("");
+  const [customStyle, setCustomStyle] = useState<SubStyle | null>(null);
+  const effectiveSubStyle = customStyle ?? findSubStyle(subStyleId);
 
   // 素材角色
   const [assets, setAssets] = useState<MediaAsset[]>([]);
@@ -231,10 +236,13 @@ export function DigitalStudio() {
   const exportRecipe = (shell: "sh" | "bat") => {
     if (!plan) return;
     try {
-      const recipe = buildDigitalRecipe(plan, assets, { shell });
+      const subFormat = effectiveSubStyle.id === "plain" ? "srt" : "ass";
+      const recipe = buildDigitalRecipe(plan, assets, { shell, subFormat });
       downloadFile(shell === "sh" ? "make-digital.sh" : "make-digital.bat", recipe.script);
       notify(
-        `脚本已导出（${recipe.mode} 模式${recipe.skipped ? ` · ${recipe.skipped} 段副画面跳过` : ""}），连同 sub.srt 与素材放同目录运行`,
+        `脚本已导出（${recipe.mode} 模式${recipe.skipped ? ` · ${recipe.skipped} 段副画面跳过` : ""}），连同 ${
+          subFormat === "ass" ? "sub.ass（记得一并导出样式）" : "sub.srt"
+        } 与素材放同目录运行`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "脚本导出失败");
@@ -245,6 +253,23 @@ export function DigitalStudio() {
     if (!plan) return;
     downloadFile("sub.srt", buildSrt(plan.segments));
     notify("字幕已导出为 sub.srt（合成脚本按此文件名烧录）");
+  };
+
+  const exportAss = () => {
+    if (!plan) return;
+    downloadFile("sub.ass", buildAss(plan.segments, effectiveSubStyle));
+    notify(`样式字幕已导出（${effectiveSubStyle.label}）；非经典样式脚本按 sub.ass 烧录`);
+  };
+
+  const applyStylePrompt = () => {
+    if (!stylePrompt.trim()) {
+      setError("先填写样式提示词，例：顶部大标题红字加粗");
+      return;
+    }
+    const generated = styleFromPrompt(stylePrompt);
+    setCustomStyle(generated);
+    setSubStyleId("custom");
+    notify(`已按提示词生成样式「${generated.label}」（导出 .ass 后脚本自动引用）`);
   };
 
   /* --------------------------- L3 配音 / L4 出片 --------------------------- */
@@ -604,20 +629,61 @@ export function DigitalStudio() {
             </button>
 
             {plan && (
-              <div className="digital-exports">
-                <button type="button" className="button button-secondary" onClick={() => downloadFile(`数字人口播方案-${new Date().toISOString().slice(0, 10)}.md`, digitalPlanMarkdown(plan, { topic: planTopicEcho, industry: planIndustry }), "text/markdown;charset=utf-8")}>
-                  <Download size={14} />方案 .md
-                </button>
-                <button type="button" className="button button-secondary" onClick={exportSrt}>
-                  <Download size={14} />字幕 sub.srt
-                </button>
-                <button type="button" className="button button-primary" onClick={() => exportRecipe("sh")}>
-                  <Download size={14} />ffmpeg .sh
-                </button>
-                <button type="button" className="button button-secondary" onClick={() => exportRecipe("bat")}>
-                  <Download size={14} />.bat
-                </button>
-              </div>
+              <>
+                <div className="office-form-row">
+                  <label className="office-field">
+                    <span>字幕样式模板</span>
+                    <select
+                      value={subStyleId}
+                      onChange={(event) => {
+                        setSubStyleId(event.target.value);
+                        if (event.target.value !== "custom") setCustomStyle(null);
+                      }}
+                    >
+                      {SUB_STYLES.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.label}（{item.desc.split("（")[0]}）
+                        </option>
+                      ))}
+                      {customStyle && (
+                        <option value="custom">自定义：{customStyle.label}</option>
+                      )}
+                    </select>
+                  </label>
+                </div>
+                <div className="digital-exports">
+                  <input
+                    className="digital-style-prompt"
+                    value={stylePrompt}
+                    onChange={(event) => setStylePrompt(event.target.value)}
+                    placeholder="提示词生成样式：顶部大标题红字加粗"
+                  />
+                  <button type="button" className="button button-secondary" onClick={applyStylePrompt}>
+                    <Sparkles size={14} />提示词生成
+                  </button>
+                </div>
+                <div className="digital-exports">
+                  <button type="button" className="button button-secondary" onClick={() => downloadFile(`数字人口播方案-${new Date().toISOString().slice(0, 10)}.md`, digitalPlanMarkdown(plan, { topic: planTopicEcho, industry: planIndustry }), "text/markdown;charset=utf-8")}>
+                    <Download size={14} />方案 .md
+                  </button>
+                  <button type="button" className="button button-secondary" onClick={exportSrt}>
+                    <Download size={14} />字幕 sub.srt
+                  </button>
+                  <button type="button" className="button button-secondary" onClick={exportAss}>
+                    <Download size={14} />样式 sub.ass
+                  </button>
+                  <button type="button" className="button button-primary" onClick={() => exportRecipe("sh")}>
+                    <Download size={14} />ffmpeg .sh
+                  </button>
+                  <button type="button" className="button button-secondary" onClick={() => exportRecipe("bat")}>
+                    <Download size={14} />.bat
+                  </button>
+                </div>
+                <p className="digital-empty-hint">
+                  当前样式：{effectiveSubStyle.label} · {effectiveSubStyle.desc}
+                  {effectiveSubStyle.id !== "plain" && "（脚本将烧录 sub.ass，请与脚本同目录导出）"}
+                </p>
+              </>
             )}
           </div>
 
