@@ -12,6 +12,8 @@ export const NAV_SLUGS: Record<string, string> = {
   地图获客: "mapleads",
   企业知识库: "knowledge",
   企微私域: "wecom",
+  群发计划: "broadcast",
+  客服渠道: "service",
   "GEO 工作台": "geo",
   数据洞察: "insights",
   视频创作: "video",

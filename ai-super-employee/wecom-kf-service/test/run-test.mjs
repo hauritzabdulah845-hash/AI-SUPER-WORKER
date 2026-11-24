@@ -280,6 +280,48 @@ async function main() {
   check("模板变量 {{name}} 替换", renderTemplate("你好{{name}}，我们按项目报价", null) === "你好你，我们按项目报价" && renderTemplate("{{name}}你好", { named: true, name: "王总" }) === "王总你好");
   check("阶段粗判", guessStage("可以先试用吗") === "试用" && guessStage("多少钱") === "报价" && guessStage("嗯嗯") === "新建", `${guessStage("可以先试用吗")}/${guessStage("多少钱")}/${guessStage("嗯嗯")}`);
 
+  // 群发（主动激活）：鉴权 → MOCK 演示发送 → 无外部ID跳过 → 报文记录 → 参数校验
+  const bc = await start(baseConfig());
+  const bcDenied = await fetch(`http://127.0.0.1:${bc.port}/api/broadcast`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: "hi", recipients: [{ name: "a", external_userid: "x" }] }),
+  });
+  const bcOk = await fetch(`http://127.0.0.1:${bc.port}/api/broadcast`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-admin-secret": "test-admin-secret" },
+    body: JSON.stringify({
+      content: "{{name}}你好，本周到店可领体验装",
+      recipients: [
+        { name: "王总", external_userid: "wmUSER1" },
+        { name: "手动线索", external_userid: "" },
+      ],
+    }),
+  });
+  const bcPayload = await bcOk.json();
+  check(
+    "群发接口鉴权",
+    bcDenied.status === 403 && bcOk.status === 200,
+    `denied=${bcDenied.status} ok=${bcOk.status}`,
+  );
+  check(
+    "群发 MOCK 演示与无ID跳过",
+    bcPayload.ok === true && bcPayload.summary.demo === 1 && bcPayload.summary.skipped === 1 && bcPayload.results[0].status === "demo",
+    JSON.stringify(bcPayload.summary ?? bcPayload),
+  );
+  check(
+    "群发报文进 MOCK 记录",
+    bc.client.sent.some((item) => item.kind === "broadcast" && item.text?.content?.includes("体验装")),
+    `sent=${bc.client.sent.length}`,
+  );
+  const bcEmpty = await fetch(`http://127.0.0.1:${bc.port}/api/broadcast`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-admin-secret": "test-admin-secret" },
+    body: JSON.stringify({ content: "", recipients: [] }),
+  });
+  check("群发空参数被拒绝", bcEmpty.status === 400, `status=${bcEmpty.status}`);
+  bc.server.close();
+
   console.log(`\n${failed === 0 ? "全部通过" : `${failed} 项失败`}`);
   process.exit(failed === 0 ? 0 : 1);
 }
