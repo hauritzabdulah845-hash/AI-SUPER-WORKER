@@ -521,7 +521,10 @@ export interface DigitalRecipe {
   skipped: number;
 }
 
-const SRT_STYLE = "FontName=Microsoft YaHei,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=1";
+// libass 的 FontName 只认单一字体名：逗号候选列表实测无效（会退到默认字体，而非次选）。
+// 字体名由调用方按键位/系统传入，脚本同时支持 fontsdir 让用户自带字体文件。
+const DEFAULT_FONT = "Microsoft YaHei";
+const SUBTITLE_BASE_STYLE = "FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=1";
 
 function pickRoleAsset(assets: MediaAsset[], role: MediaRole, kind: MediaAsset["kind"]): MediaAsset | null {
   return listByRole(assets, role).find((asset) => asset.kind === kind) ?? null;
@@ -538,7 +541,7 @@ function pickRoleAsset(assets: MediaAsset[], role: MediaRole, kind: MediaAsset["
 export function buildDigitalRecipe(
   plan: DigitalPlan,
   assets: MediaAsset[],
-  options: { shell: "sh" | "bat"; subFormat?: "srt" | "ass" } = { shell: "sh" },
+  options: { shell: "sh" | "bat"; subFormat?: "srt" | "ass"; fontName?: string; fontDir?: string } = { shell: "sh" },
 ): DigitalRecipe {
   const subFormat = options.subFormat ?? "srt";
   const avatar = pickRoleAsset(assets, "avatar", "video");
@@ -576,6 +579,11 @@ export function buildDigitalRecipe(
       : "footage";
 
   const isBat = options.shell === "bat";
+  const fontName = (options.fontName ?? "").trim() || DEFAULT_FONT;
+  const fontDir = (options.fontDir ?? "").trim();
+  const SRT_STYLE = `FontName=${fontName},${SUBTITLE_BASE_STYLE}`;
+  // fontsdir 让用户把字体文件放脚本同目录即可用，不必装进系统字体库
+  const subtitleFilter = `subtitles=sub.srt${fontDir ? `:fontsdir=${fontDir}` : ""}:force_style='${SRT_STYLE}'`;
   const cont = isBat ? " ^" : " \\";
   const lines: string[] = [];
 
@@ -657,7 +665,7 @@ export function buildDigitalRecipe(
   parts.push(
     subFormat === "ass"
       ? `${cur}ass=sub.ass[vout]`
-      : `${cur}subtitles=sub.srt:force_style='${SRT_STYLE}'[vout]`,
+      : `${cur}${subtitleFilter}[vout]`,
   );
 
   lines.push(`ffmpeg -y${cont}`);
@@ -667,7 +675,10 @@ export function buildDigitalRecipe(
   });
   lines.push(`  -filter_complex "${parts.join(";")}"${cont}`);
   if (audio) {
-    lines.push(`  -map "[vout]" -map ${audioIndex}:a -c:a copy -shortest "digital-out.mp4"`);
+    // mp4 容不下 pcm(wav)，无损配音必须转 AAC；已压缩音频才可 copy
+    const lossless = /\.(wav|wave|aif|aiff|pcm)$/i.test((audio as MediaAsset).name);
+    const audioCodec = lossless ? "-c:a aac -b:a 192k" : "-c:a copy";
+    lines.push(`  -map "[vout]" -map ${audioIndex}:a ${audioCodec} -shortest "digital-out.mp4"`);
   } else if (avatar) {
     lines.push(`  -map "[vout]" -t ${plan.totalDuration} -c:v libx264 -pix_fmt yuv420p -movflags +faststart "digital-out.mp4"`);
   } else {
@@ -681,7 +692,9 @@ export function buildDigitalRecipe(
         : "rem 输出：digital-out.mp4；如缺字幕样式字体，改 sub.srt 同名字体名"
       : subFormat === "ass"
         ? "# 输出：digital-out.mp4；样式在 sub.ass（样式模板导出），字体/字号改 sub.ass 的 Style 行"
-        : "# 输出：digital-out.mp4；如缺字幕样式字体，改 SRT_STYLE 里的字体名",
+        : `# 输出：digital-out.mp4；字幕字体「${fontName}」${fontDir ? `，字体目录 ${fontDir}` : ""}。` +
+          "\n# 中文显示成方块时：把中文字体文件放进 fonts/ 目录（脚本已带 fontsdir=fonts），" +
+          "\n# 或把 filter 里的 FontName 改成本机已装字体（macOS 常用 PingFang SC，Linux 常用 Noto Sans CJK SC）。",
   );
   if (isBat) lines.push("endlocal");
 
