@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { BookOpen, CheckCircle2, ChevronLeft, ChevronRight, FileText, Search, X } from "lucide-react";
-import { paginate, searchDocs, type KbDoc } from "../cloud/kbsearch";
+import { paginate, snippetOf, tokenizeQuery, type KbDoc } from "../cloud/kbsearch";
+import { rankDocs } from "../cloud/kbrank";
 
 interface KnowledgeListProps {
   docs: KbDoc[];
@@ -19,7 +20,29 @@ export function KnowledgeList({ docs, onOpen }: KnowledgeListProps) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
 
-  const hits = useMemo(() => searchDocs(docs as KbDoc[], query), [docs, query]);
+  /**
+   * 检索：有查询时用 TF-IDF 余弦排序（词权重按文档集统计，比简单命中更准），
+   * 并保留「标题命中优先」的直觉——标题命中的人为提到前面。
+   */
+  type Hit = { doc: KbDoc; score: number; snippet: string; where: "none" | "title" | "content"; matched?: string[] };
+  const hits = useMemo<Hit[]>(() => {
+    if (!query.trim()) {
+      return docs.map((doc) => ({ doc, score: 0, snippet: snippetOf(doc, []), where: "none" as const }));
+    }
+    const ranked = rankDocs(docs.map((doc) => ({ id: doc.id, title: doc.title, content: doc.content })), query, 500);
+    const tokens = tokenizeQuery(query);
+    return ranked.map((hit) => {
+      const doc = docs.find((item) => item.id === hit.id) as KbDoc;
+      const titleHit = tokens.some((token) => doc.title.toLowerCase().includes(token));
+      return {
+        doc,
+        score: hit.score,
+        snippet: snippetOf(doc, tokens),
+        where: titleHit ? ("title" as const) : ("content" as const),
+        matched: hit.matched,
+      };
+    });
+  }, [docs, query]);
   const paged = useMemo(() => paginate(hits, page, PAGE_SIZE), [hits, page]);
 
   const changeQuery = (value: string) => {
@@ -81,7 +104,12 @@ export function KnowledgeList({ docs, onOpen }: KnowledgeListProps) {
               {hit.doc.doc_type} · {hit.doc.chunks} 个知识片段
               {hit.where === "title" && <em className="kb-hit-badge">标题命中</em>}
             </small>
-            {query.trim() && <span className="kb-snippet">{hit.snippet}</span>}
+            {query.trim() && (
+              <span className="kb-snippet">
+                {hit.matched?.length ? <em className="kb-terms">匹配：{hit.matched.slice(0, 4).join("、")}</em> : null}
+                {hit.snippet}
+              </span>
+            )}
           </span>
           <time>{new Date(hit.doc.created_at).toLocaleDateString("zh-CN")}</time>
           <CheckCircle2 size={17} />

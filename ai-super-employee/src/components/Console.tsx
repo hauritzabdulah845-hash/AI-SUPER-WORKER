@@ -74,6 +74,8 @@ import { BroadcastCenter } from "./BroadcastCenter";
 import { ServiceChannels } from "./ServiceChannels";
 import { KnowledgeList } from "./KnowledgeList";
 import { UsagePanel } from "./UsagePanel";
+import { BundleCenter, type BundleSource } from "./BundleCenter";
+import { collectOfficeSources } from "../cloud/bundlecollect";
 import { DigitalStudio } from "./DigitalStudio";
 import { PublishHub } from "./PublishHub";
 import {
@@ -251,6 +253,8 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
   const [templateDomain, setTemplateDomain] = useState("全部");
   const [templateQuery, setTemplateQuery] = useState("");
   const [contentAgent, setContentAgent] = useState("全部");
+  /** AI 办公草稿渲染成的打包源（进内容工厂时懒加载一次） */
+  const [officeBundle, setOfficeBundle] = useState<BundleSource[]>([]);
   /** 「去发布」预选的产出（`标题-创建时间`），传给聚合发布页 */
   const [publishSource, setPublishSource] = useState("");
   const [contentDetail, setContentDetail] = useState<{ title: string; agent: string; output: string; created_at: string; taskId: number | null; stepIndex: number; demo: boolean } | null>(null);
@@ -313,6 +317,21 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
   useEffect(() => {
     if (activeNav === "AI 创作") void loadArtworks();
   }, [activeNav, loadArtworks]);
+
+  // 内容工厂的打包中心需要真 pptx/docx：切过去时把已保存草稿渲染一次
+  useEffect(() => {
+    if (activeNav !== "内容工厂") return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void collectOfficeSources().then((rows) => {
+        if (!cancelled) setOfficeBundle(rows);
+      });
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [activeNav]);
 
   const runGenerate = async () => {
     const prompt = studioPrompt.trim();
@@ -710,6 +729,21 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
     });
     return items.slice(0, 24);
   }, [tasks]);
+
+  /** 可打包的产出：内容工厂文本 + 已保存的办公文档/方案（有二进制时用 base64） */
+  const bundleSources = useMemo(
+    () => [
+      ...contentOutputs.map((item) => ({
+        kind: "content" as const,
+        title: item.title,
+        ext: ".md",
+        data: item.output,
+        source: `${item.agent} · ${new Date(item.created_at).toLocaleDateString("zh-CN")}`,
+      })),
+      ...officeBundle,
+    ],
+    [contentOutputs, officeBundle],
+  );
 
   const contentAgents = useMemo(
     () => ["全部", ...Array.from(new Set(contentOutputs.map((item) => item.agent)))],
@@ -1839,6 +1873,10 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                   <button type="button" className="button button-primary" onClick={() => openComposer({ goal: "为秋季新品生成 7 天内容排期与 3 条朋友圈文案" })}><Sparkles size={15} />生成新内容</button>
                 </div>
               </div>
+              <BundleCenter
+                sources={bundleSources}
+                namePrefix="内容交付包"
+              />
               <div className="filter-chips">
                 {contentAgents.map((agent) => (
                   <button type="button" key={agent} className={contentAgent === agent ? "active" : ""} onClick={() => setContentAgent(agent)}>

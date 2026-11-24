@@ -8858,3 +8858,33 @@ button.console-search:hover { border-color: #8a78e4; }
 .usage-models em { font-style: normal; color: #b91c1c; font-weight: 600; }
 .usage-empty { color: var(--muted-ink); padding: 8px 2px !important; }
 .usage-channels { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-ink); margin-top: 8px; }
+
+/* --------------------- 第十五批：交付打包 / 知识库排序 --------------------- */
+.bundle-center { margin-bottom: 14px; }
+.bundle-groups { display: grid; gap: 8px; }
+.bundle-group { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.bundle-group-head {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 12px;
+  background: rgba(250, 250, 249, 0.9); border: none; cursor: pointer; text-align: left; font-size: 13px;
+}
+.bundle-group-head strong { flex: none; }
+.bundle-group-head span { color: var(--muted-ink); font-size: 12px; }
+.bundle-group-head em { margin-left: auto; font-style: normal; color: var(--purple-dark); font-size: 12px; font-weight: 600; }
+.bundle-group ul { list-style: none; margin: 0; padding: 4px 0; }
+.bundle-group li label {
+  display: flex; align-items: center; gap: 9px; padding: 6px 12px; cursor: pointer; font-size: 12.5px;
+}
+.bundle-group li label:hover { background: rgba(124, 77, 255, 0.05); }
+.bundle-group li label.checked { background: rgba(124, 77, 255, 0.08); }
+.bundle-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bundle-ext {
+  padding: 1px 6px; border-radius: 4px; background: rgba(120, 113, 108, 0.12);
+  color: var(--muted-ink); font-size: 10px; font-weight: 700;
+}
+.bundle-source { color: var(--muted-ink); font-size: 11px; }
+.bundle-preview { margin-top: 10px; }
+.bundle-preview h3 { font-size: 12.5px; margin: 0 0 6px; }
+.bundle-preview ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; max-height: 220px; overflow: auto; }
+.bundle-preview li { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; color: var(--muted-ink); }
+.bundle-preview code { font-family: ui-monospace, monospace; color: var(--ink); }
+.kb-terms { display: block; font-style: normal; color: var(--purple-dark); font-weight: 600; font-size: 11px; }
