@@ -11,7 +11,7 @@
  */
 
 /** 逐条发送；单条失败不影响其余，结果汇总给前端落历史。 */
-export async function sendBroadcast({ client, config, recipients, content, logger = console }) {
+export async function sendBroadcast({ client, config, recipients, content, logger = console, lists = null }) {
   const text = String(content ?? "").trim();
   if (!text) throw new Error("群发内容不能为空");
   if (!Array.isArray(recipients) || !recipients.length) throw new Error("受众为空");
@@ -22,6 +22,12 @@ export async function sendBroadcast({ client, config, recipients, content, logge
     const externalUserId = String(recipient?.external_userid ?? "").trim();
     if (!externalUserId) {
       results.push({ name, status: "skipped", detail: "无企微客户ID（未同步或手动线索）" });
+      continue;
+    }
+    // 名单门禁：黑名单恒跳过；白名单非空时只发名单内客户
+    const blocked = lists?.checkBroadcast?.(externalUserId) ?? "";
+    if (blocked) {
+      results.push({ name, status: "skipped", detail: blocked });
       continue;
     }
     try {

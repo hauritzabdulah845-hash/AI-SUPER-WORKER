@@ -82,5 +82,13 @@ export function buildReply(rule, config) {
   if (rule.reply.type === "text" && rule.reply.content) {
     return { type: "text", content: rule.reply.content };
   }
+  // 关键词→附件：正文（可空）随消息带出，附件本体需素材上传 API（接入清单），先记录待发
+  if (rule.reply.type === "attachment") {
+    return {
+      type: "attachment",
+      content: rule.reply.content ?? "",
+      fileName: String(rule.reply.fileName ?? "附件").slice(0, 80),
+    };
+  }
   return null;
 }

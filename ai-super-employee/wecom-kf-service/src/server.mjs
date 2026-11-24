@@ -13,6 +13,7 @@ import { decrypt, signature, parseXml, escapeXml } from "./crypto.mjs";
 import { WecomClient } from "./wecom.mjs";
 import { matchKeywordRule, matchDefaultRule, pickRuleByAI, buildReply } from "./rules.mjs";
 import { createCustomerStore, renderTemplate } from "./customers.mjs";
+import { createListStore, createIntentStore } from "./lists.mjs";
 import { sendBroadcast } from "./broadcast.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -81,6 +82,8 @@ export function createService({ config, rules, logger = console }) {
   const client = new WecomClient(config);
   const store = createStore(config.dataDir);
   const customers = createCustomerStore(config.dataDir);
+  const lists = createListStore(config.dataDir);
+  const intents = createIntentStore(config.dataDir);
 
   /**
    * 高意向实时提醒：阶段跃迁进「报价/成交/试用」时推企微群机器人。
@@ -134,10 +137,24 @@ export function createService({ config, rules, logger = console }) {
           const customer = customers.touch({ externalUserId: msg.external_userid, openKfid, text, at });
           customers.record({ externalUserId: msg.external_userid, direction: "in", text, at });
 
+          // 黑名单：消息照记，但不自动回复（群发同样跳过，见 broadcast.mjs）
+          if (lists.isBlacklisted(msg.external_userid)) {
+            logger.info(`黑名单客户消息已记录，跳过自动回复：${customer?.name ?? msg.external_userid}`);
+            continue;
+          }
+
           // 只在「跃迁进高意向」时提醒，避免同一阶段每条消息都轰炸群。
           // alertStages 允许缺失（老配置 / 测试配置），缺省用默认三档。
           const alertStages = Array.isArray(config.alertStages) ? config.alertStages : ["报价", "成交", "试用"];
           if (customer && alertStages.includes(customer.stage) && !alertStages.includes(stageBefore)) {
+            intents.push({
+              at,
+              name: customer.name,
+              externalUserId: customer.externalUserId,
+              stageFrom: stageBefore,
+              stage: customer.stage,
+              text,
+            });
             void notifyHighIntent({ customer, stageFrom: stageBefore, text });
           }
 
@@ -166,6 +183,29 @@ export function createService({ config, rules, logger = console }) {
             });
             customers.record({ externalUserId: msg.external_userid, direction: "out", type: "miniprogram", text: `[AI 名片] ${reply.title}`, ruleId: rule?.id ?? "" });
             logger.info(`已向 ${msg.external_userid}（${customer?.name}）发送小程序名片：${reply.pagepath}`);
+          } else if (reply.type === "attachment") {
+            const content = renderTemplate(reply.content, customer);
+            if (content) {
+              await client.sendText({
+                externalUserId: msg.external_userid,
+                openKfid,
+                content,
+              });
+            }
+            // 附件本体：MOCK 记一笔供断言/控制台展示；真实发送需素材上传后发 media_id（接入清单）
+            if (client.mock) {
+              client.sent.push({ at: Date.now(), kind: "attachment", to: msg.external_userid, fileName: reply.fileName });
+            }
+            customers.record({
+              externalUserId: msg.external_userid,
+              direction: "out",
+              type: "attachment",
+              text: `${content ? `${content}\n` : ""}[附件] ${reply.fileName}`,
+              ruleId: rule?.id ?? "",
+            });
+            logger.info(
+              `已回复并记录附件「${reply.fileName}」${client.mock ? "（MOCK）" : "（真实 media 发送需素材上传 API，见接入清单）"}`,
+            );
           } else {
             const content = renderTemplate(reply.content, customer);
             await client.sendText({
@@ -271,6 +311,7 @@ export function createService({ config, rules, logger = console }) {
           recipients: body.recipients,
           content: body.content,
           logger,
+          lists,
         });
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         res.end(JSON.stringify({ ok: true, mock: config.mock, ...payload }));
@@ -278,6 +319,85 @@ export function createService({ config, rules, logger = console }) {
         res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
         res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }));
       }
+      return;
+    }
+
+    // 名单管理：白/黑名单（群发门禁 + 自动回复黑名单跳过）
+    if (url.pathname === "/api/lists") {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Headers", "content-type, x-admin-secret");
+      res.setHeader("Cache-Control", "no-store");
+      if (req.method === "OPTIONS") {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      if (!adminAuthorized(req, url)) {
+        res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: false, error: "forbidden" }));
+        return;
+      }
+      if (req.method === "GET") {
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: true, ...lists.get() }));
+        return;
+      }
+      if (req.method === "POST") {
+        try {
+          const body = JSON.parse((await readBody(req)) || "{}");
+          const kind = body.kind;
+          const action = body.action ?? "add";
+          let result;
+          if (action === "remove") result = lists.remove(kind, body.ids);
+          else if (action === "replace") result = lists.replace(kind, body.entries);
+          else result = lists.add(kind, body.entries);
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: true, action, ...result, ...lists.get() }));
+        } catch (error) {
+          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+        }
+        return;
+      }
+      res.writeHead(405, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ ok: false, error: "method not allowed" }));
+      return;
+    }
+
+    // 意向提醒：高意向阶段跃迁事件（本地留档，webhook 可选）
+    if (url.pathname === "/api/intents") {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Headers", "content-type, x-admin-secret");
+      res.setHeader("Cache-Control", "no-store");
+      if (req.method === "OPTIONS") {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      if (!adminAuthorized(req, url)) {
+        res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: false, error: "forbidden" }));
+        return;
+      }
+      if (req.method === "GET") {
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: true, intents: intents.list() }));
+        return;
+      }
+      if (req.method === "POST") {
+        try {
+          const body = JSON.parse((await readBody(req)) || "{}");
+          if (body.clear) intents.clear();
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: true, intents: intents.list() }));
+        } catch (error) {
+          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+        }
+        return;
+      }
+      res.writeHead(405, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ ok: false, error: "method not allowed" }));
       return;
     }
 
@@ -372,7 +492,7 @@ export function createService({ config, rules, logger = console }) {
     res.end("method not allowed");
   });
 
-  return { server, client, store };
+  return { server, client, store, lists, intents };
 }
 
 /* 直接运行：node src/server.mjs */

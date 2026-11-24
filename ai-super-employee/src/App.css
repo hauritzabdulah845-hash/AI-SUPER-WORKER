@@ -8766,3 +8766,13 @@ button.console-search:hover { border-color: #8a78e4; }
   border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px;
   font-size: 13px; background: var(--paper); color: var(--ink);
 }
+
+/* --------------------------- 客服：名单与意向 --------------------------- */
+.service-empty { color: var(--muted-ink); font-size: 13px; padding: 10px 4px !important; }
+.service-sim-via.intent {
+  background: rgba(255, 149, 0, 0.14); color: #b25e00; font-weight: 700;
+}
+.service-sim-attachment {
+  margin-top: 6px; padding: 6px 10px; border-radius: 8px;
+  background: rgba(124, 77, 255, 0.08); color: var(--purple-dark); font-size: 12px; font-weight: 600;
+}

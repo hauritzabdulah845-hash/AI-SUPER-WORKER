@@ -21,6 +21,8 @@ export interface KfRule {
   reply: string;
   enabled: boolean;
   isDefault: boolean;
+  /** 附件文件名（可选）：命中后回复正文 + [附件] 记录；真实 media 发送见接入清单 */
+  attachmentName?: string;
 }
 
 export const KF_CHANNELS: KfChannelDef[] = [
@@ -124,13 +126,130 @@ export interface SimulateResult {
   rule: KfRule | null;
   reply: string;
   via: "keyword" | "default" | "none";
+  /** 命中高意向词（报价/购买/合作…）→ 控制台标 ⚠ 意向提醒 */
+  intent: boolean;
+  /** 规则带附件时展示 */
+  attachment?: string;
 }
 
 /** 演示模拟器：关键词 → 默认兜底；不命中返回 none（服务端还会多一层 AI 兜底）。 */
 export function simulateReply(rules: KfRule[], text: string, customer?: { name?: string } | null): SimulateResult {
+  const intent = isHighIntent(text);
   const keywordHit = matchKeywordRule(rules, text);
-  if (keywordHit) return { rule: keywordHit, reply: renderTemplate(keywordHit.reply, customer), via: "keyword" };
+  if (keywordHit) {
+    return {
+      rule: keywordHit,
+      reply: renderTemplate(keywordHit.reply, customer),
+      via: "keyword",
+      intent,
+      attachment: keywordHit.attachmentName,
+    };
+  }
   const fallback = matchDefaultRule(rules);
-  if (fallback) return { rule: fallback, reply: renderTemplate(fallback.reply, customer), via: "default" };
-  return { rule: null, reply: "", via: "none" };
+  if (fallback) return { rule: fallback, reply: renderTemplate(fallback.reply, customer), via: "default", intent };
+  return { rule: null, reply: "", via: "none", intent };
+}
+
+/* ------------------------------------------------------------------ */
+/* 名单（白/黑名单）与意向词                                              */
+/* ------------------------------------------------------------------ */
+
+export interface KfListEntry {
+  id: string;
+  name?: string;
+  note?: string;
+  addedAt: string;
+}
+
+export interface KfLists {
+  blacklist: KfListEntry[];
+  whitelist: KfListEntry[];
+}
+
+const LISTS_KEY = "ai-employee:kf-lists";
+const LIST_CAP = 200;
+
+export function loadLists(): KfLists {
+  try {
+    const raw = window.localStorage.getItem(LISTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<KfLists>;
+      return { blacklist: parsed.blacklist ?? [], whitelist: parsed.whitelist ?? [] };
+    }
+  } catch {
+    // 落回空名单
+  }
+  return { blacklist: [], whitelist: [] };
+}
+
+export function saveLists(lists: KfLists): KfLists {
+  const next: KfLists = {
+    blacklist: lists.blacklist.slice(0, LIST_CAP),
+    whitelist: lists.whitelist.slice(0, LIST_CAP),
+  };
+  try {
+    window.localStorage.setItem(LISTS_KEY, JSON.stringify(next));
+  } catch {
+    // 隐私模式写入失败不影响本次操作
+  }
+  return next;
+}
+
+/**
+ * 粘贴解析：每行 `id` 或 `id,姓名` 或 `id,姓名,备注`；去空行、去重、封顶 200。
+ * id 支持 external_userid（wm 开头）或任意可识别编号。
+ */
+export function parseListInput(text: string): KfListEntry[] {
+  const seen = new Set<string>();
+  const rows: KfListEntry[] = [];
+  const newline = new RegExp("\\r?\\n");
+  for (const rawLine of String(text ?? "").split(newline)) {
+    const parts = rawLine.split(",").map((item) => item.trim());
+    const id = parts[0] ?? "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    rows.push({
+      id,
+      name: parts[1] ?? "",
+      note: parts[2] ?? "",
+      addedAt: new Date().toISOString(),
+    });
+    if (rows.length >= LIST_CAP) break;
+  }
+  return rows;
+}
+
+/** 受众预览过滤：返回保留行与两类被挡计数（与服务端 broadcast.mjs 同语义）。 */
+export function filterRecipients<T extends { external_userid?: string | null }>(
+  rows: T[],
+  lists: KfLists,
+): { kept: T[]; blockedBlack: number; blockedWhite: number } {
+  const whiteIds = new Set(lists.whitelist.map((item) => item.id));
+  const blackIds = new Set(lists.blacklist.map((item) => item.id));
+  const kept: T[] = [];
+  let blockedBlack = 0;
+  let blockedWhite = 0;
+  for (const row of rows) {
+    const id = String(row.external_userid ?? "").trim();
+    if (!id) continue; // 无 ID 行交由发送环节判定（保持原 skipped 语义）
+    if (blackIds.has(id)) {
+      blockedBlack += 1;
+      continue;
+    }
+    if (lists.whitelist.length && !whiteIds.has(id)) {
+      blockedWhite += 1;
+      continue;
+    }
+    kept.push(row);
+  }
+  return { kept, blockedBlack, blockedWhite };
+}
+
+/** 高意向词（与服务端 guessStage/alertStages 对齐的常用档）：命中即在模拟器与提醒里标 ⚠。 */
+export const INTENT_WORDS = ["报价", "价格", "多少钱", "收费", "购买", "下单", "签约", "合作", "打款", "试用", "体验"];
+
+export function isHighIntent(text: string): boolean {
+  const content = (text ?? "").trim();
+  if (!content) return false;
+  return INTENT_WORDS.some((word) => content.includes(word));
 }
