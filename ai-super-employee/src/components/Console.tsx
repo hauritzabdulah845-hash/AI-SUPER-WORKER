@@ -18,6 +18,7 @@ import {
   Download,
   ExternalLink,
   FileText,
+  Upload,
   FolderKanban,
   FolderOpen,
   FolderPlus,
@@ -153,6 +154,8 @@ import {
   type TaskRow,
   type WecomLinkRow,
 } from "../cloud/api";
+import { parseLeadsCsv, type LeadImportRow } from "../cloud/leadcsv";
+import { summarizeTasks, taskStatsHeadline } from "../cloud/tasksummary";
 
 const navItems = [
   { label: "AI 总控", icon: LayoutDashboard },
@@ -231,9 +234,11 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
   const [showPalette, setShowPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [showLeadForm, setShowLeadForm] = useState(false);
+  const [csvText, setCsvText] = useState("");
+  const [showCsvImport, setShowCsvImport] = useState(false);
   const [leadForm, setLeadForm] = useState({ name: "", source: "", intent: "高意向", need: "", owner: "" });
   // 表单提交中状态：云端写入有时需数秒，按钮必须给反馈，避免用户重复点击造成重复数据。
-  const [formSaving, setFormSaving] = useState<"" | "lead" | "knowledge" | "wecom" | "followup">("");
+  const [formSaving, setFormSaving] = useState<"" | "lead" | "knowledge" | "wecom" | "followup" | "csv">("");
   const [showKnowledgeForm, setShowKnowledgeForm] = useState(false);
   const [knowledgeForm, setKnowledgeForm] = useState({ title: "", docType: "产品手册", content: "" });
   const [docDetail, setDocDetail] = useState<KnowledgeRow | null>(null);
@@ -1207,6 +1212,52 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
     }
   };
 
+  /** CSV 批量导入：逐条 insertLead，失败计数不中断（库表逐行写入）。 */
+  const importLeadsCsv = async () => {
+    if (!csvText.trim()) {
+      setToast("先粘贴 CSV 内容或选择文件");
+      return;
+    }
+    const parsed = parseLeadsCsv(csvText, leads);
+    if (!parsed.rows.length) {
+      setToast(
+        `没有可导入的行（重复 ${parsed.duplicatesInFile + parsed.duplicatesExisting} 条，跳过 ${parsed.skipped} 行）`,
+      );
+      return;
+    }
+    setFormSaving("csv");
+    let created = 0;
+    let failedRows = 0;
+    const createdRows: LeadRow[] = [];
+    for (const row of parsed.rows as LeadImportRow[]) {
+      try {
+        const lead = await insertLead({
+          name: row.name,
+          source: row.source,
+          intent: row.intent,
+          need: row.need,
+          owner: row.owner || user?.name || "AI 跟进",
+          stage: row.stage,
+          channel: "CSV 导入",
+        });
+        createdRows.push(lead);
+        created += 1;
+      } catch {
+        failedRows += 1;
+      }
+    }
+    setLeads((current) => [...createdRows, ...current]);
+    setFormSaving("");
+    setCsvText("");
+    setToast(
+      `导入完成：新增 ${created} 位客户` +
+        (parsed.duplicatesExisting ? ` · 已有重复 ${parsed.duplicatesExisting} 条` : "") +
+        (parsed.duplicatesInFile ? ` · 文件内重复 ${parsed.duplicatesInFile} 条` : "") +
+        (parsed.skipped ? ` · 跳过空行/缺名 ${parsed.skipped}` : "") +
+        (failedRows ? ` · 写入失败 ${failedRows}` : ""),
+    );
+  };
+
   const exportLeadsCsv = () => {
     const header = "客户,来源,意向等级,最新需求,跟进人,阶段,创建时间";
     const rows = leads.map((lead) =>
@@ -1656,6 +1707,53 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                 <div><h2>全部任务</h2><p>共 {tasks.length} 条云端任务记录 · 当前筛选 {filteredTasks.length} 条</p></div>
                 <button type="button" className="button button-primary" onClick={() => openComposer()}><Plus size={16} />创建任务</button>
               </div>
+              {(() => {
+                const stats = summarizeTasks(tasks);
+                if (stats.total === 0) return null;
+                return (
+                  <div className="task-stats-card">
+                    <div className="task-stats-head">
+                      <strong>失败与重试统计</strong>
+                      <span>{taskStatsHeadline(stats)}</span>
+                    </div>
+                    <div className="task-stats-body">
+                      <div className="task-stats-spark" title="近 7 天失败数（左旧右新）">
+                        {stats.dailyFailures.map((count, index) => (
+                          <i
+                            key={index}
+                            className={count ? "has" : ""}
+                            style={{ height: `${Math.min(100, count * 30 + (count ? 25 : 8))}%` }}
+                            title={`${6 - index} 天前：${count} 次`}
+                          />
+                        ))}
+                      </div>
+                      <ul className="task-stats-reasons">
+                        {stats.failures.slice(0, 3).map((group) => (
+                          <li key={group.reason}>
+                            <span>{group.reason}</span>
+                            <em>{group.count} 次</em>
+                            <small>{group.advice}</small>
+                          </li>
+                        ))}
+                        {stats.failures.length === 0 && <li className="task-stats-ok">没有失败任务</li>}
+                      </ul>
+                    </div>
+                    {stats.retryIds.length > 0 && (
+                      <button
+                        type="button"
+                        className="text-link"
+                        onClick={() => {
+                          const targets = tasks.filter((task) => stats.retryIds.includes(task.id));
+                          targets.forEach((task) => rerunTask(task));
+                          setToast(`已按目标重新发起 ${targets.length} 条任务`);
+                        }}
+                      >
+                        一键重跑全部失败任务（{stats.retryIds.length}）
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               <p className="task-list-tip">点击任意一行，查看该任务每个岗位的执行过程、完整产出与结论摘要。</p>
               <div className="status-tabs">
                 {([
@@ -1779,10 +1877,51 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                 <div><h2>客户线索</h2><p>共 {leads.length} 条线索 · 高意向 {highIntent} 条 · 阶段可点击推进，企微跟进后记得回填结果</p></div>
                 <div className="lead-header-actions">
                   <button type="button" className="button button-secondary" onClick={exportLeadsCsv}><Download size={15} />导出 CSV</button>
+                  <button type="button" className="button button-secondary" onClick={() => setShowCsvImport((current) => !current)}><Upload size={15} />批量导入</button>
                   <button type="button" className="button button-primary" onClick={() => setShowLeadForm(true)}><Plus size={15} />新增线索</button>
                 </div>
               </div>
               <div className="lead-table-wrap"><table className="lead-table"><thead><tr><th>客户</th><th>来源</th><th>意向等级</th><th>最新需求</th><th>跟进人</th><th>阶段</th><th>操作</th></tr></thead><tbody>{leads.map((lead) => <tr key={lead.id}><td><span className="lead-avatar">{lead.name.slice(0, 1)}</span><strong>{lead.name}</strong></td><td>{lead.source}{lead.external_userid ? <span className="kf-badge" title={`企微身份：${lead.external_userid}`}>企微</span> : null}</td><td><span className={`intent-badge ${lead.intent === "高意向" ? "hot" : ""}`}>{lead.intent}</span></td><td>{lead.need}</td><td>{lead.owner}</td><td><button type="button" className="stage-chip" title="点击推进到下一阶段" onClick={() => advanceLead(lead)}>{lead.stage}<ChevronRight size={12} /></button></td><td><button type="button" className="icon-button" title="回填跟进结果" aria-label={`回填${lead.name}的跟进结果`} onClick={() => { void openFollowUp(lead); }}><ClipboardCopy size={14} /></button><button type="button" className="icon-button row-remove" aria-label={`删除${lead.name}`} onClick={() => removeLead(lead)}><Trash2 size={14} /></button></td></tr>)}</tbody></table></div>
+              {showCsvImport && (
+                <div className="lead-csv-panel">
+                  <div className="console-card-header">
+                    <div>
+                      <h2>CSV 批量导入</h2>
+                      <p>表头支持：客户/姓名、来源、意向等级、最新需求、跟进人、阶段、企微ID；同名同企微ID自动去重</p>
+                    </div>
+                    <button type="button" className="icon-button" aria-label="关闭" onClick={() => setShowCsvImport(false)}>×</button>
+                  </div>
+                  <label className="service-field">
+                    <span>粘贴 CSV 内容，或选择 .csv 文件</span>
+                    <textarea
+                      rows={5}
+                      value={csvText}
+                      onChange={(event) => setCsvText(event.target.value)}
+                      placeholder={["客户,来源,意向等级,最新需求,跟进人,阶段", "张三,抖音,高意向,想了解团购,小李,跟进中"].join(String.fromCharCode(10))}
+                    />
+                  </label>
+                  <div className="form-actions">
+                    <label className="button button-secondary">
+                      <Upload size={14} />选择文件
+                      <input
+                        type="file"
+                        accept=".csv,text/csv"
+                        hidden
+                        onChange={async (event) => {
+                          const file = event.target.files?.[0];
+                          if (!file) return;
+                          const text = await file.text();
+                          setCsvText(text);
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                    <button type="button" className="button button-primary" onClick={() => void importLeadsCsv()} disabled={formSaving === "csv"}>
+                      {formSaving === "csv" ? "导入中…" : "开始导入"}
+                    </button>
+                  </div>
+                </div>
+              )}
               {leads.length === 0 && <div className="empty-search"><Users size={24} /><strong>还没有线索</strong><span>点击「新增线索」录入第一位客户</span></div>}
             </section>
           )}

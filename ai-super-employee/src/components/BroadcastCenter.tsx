@@ -3,14 +3,21 @@ import { Clock3, LoaderCircle, Play, Plus, Send, Trash2, Users, X } from "lucide
 import type { LeadRow } from "../cloud/api";
 import {
   createBroadcast,
+  approvalLabel,
+  broadcastBlockReason,
+  broadcastRiskHints,
+  decideApproval,
   dueBroadcasts,
+  isBroadcastSendable,
   executeBroadcast,
   isBroadcastDue,
   loadBroadcasts,
   removeBroadcast,
   renderContent,
+  requestApproval,
   selectRecipients,
   upsertBroadcast,
+  type BroadcastApproval,
   type BroadcastPlan,
 } from "../cloud/broadcast";
 import { filterRecipients, loadLists } from "../cloud/kfchannels";
@@ -41,6 +48,8 @@ interface Draft {
   intents: string[];
   scheduleAt: string;
   immediate: boolean;
+  /** 需审批：保存后进入待审批，审批通过前不可发送 */
+  needApproval: boolean;
 }
 
 function toDraft(plan: BroadcastPlan): Draft {
@@ -52,6 +61,7 @@ function toDraft(plan: BroadcastPlan): Draft {
     intents: [...plan.filter.intents],
     scheduleAt: plan.scheduleAt,
     immediate: false,
+    needApproval: (plan.approval ?? "none") !== "none",
   };
 }
 
@@ -140,6 +150,7 @@ export function BroadcastCenter(props: { leads: LeadRow[]; kfBaseUrl: string; kf
       intents: [],
       scheduleAt: toLocalDateTimeValue(new Date(Date.now() + 3_600_000)),
       immediate: false,
+      needApproval: false,
     });
 
   const saveDraft = () => {
@@ -164,15 +175,45 @@ export function BroadcastCenter(props: { leads: LeadRow[]; kfBaseUrl: string; kf
       scheduleAt,
       status: scheduleAt ? "scheduled" : "draft",
     };
+    // 审批状态：勾选需审批 → 内容/受众有变化则回到待审批（防止过审后偷改内容）
+    const prevApproval: BroadcastApproval = existing?.approval ?? "none";
+    const contentChanged = !existing || existing.content !== next.content || JSON.stringify(existing.filter) !== JSON.stringify(next.filter);
+    if (draft.needApproval) {
+      next.approval = prevApproval === "approved" && !contentChanged ? "approved" : "pending";
+      next.approvalNote = prevApproval === "rejected" ? "" : existing?.approvalNote ?? "";
+      next.approvalAt = prevApproval === "approved" && !contentChanged ? existing?.approvalAt : undefined;
+    } else {
+      next.approval = "none";
+      next.approvalNote = "";
+      next.approvalAt = undefined;
+    }
     const merged = upsertBroadcast(next);
     setPlans(merged);
     setDraft(null);
-    notify(scheduleAt ? `已排期：${formatTime(Date.parse(scheduleAt))} 自动发送` : "已保存（手动发送）");
+    notify(
+      next.approval === "pending"
+        ? `已保存并提交审批${scheduleAt ? `（排期 ${formatTime(Date.parse(scheduleAt))}）` : ""}：审批通过后才会发送`
+        : scheduleAt
+          ? `已排期：${formatTime(Date.parse(scheduleAt))} 自动发送`
+          : "已保存（手动发送）",
+    );
   };
 
   const removePlan = (id: string) => {
     setPlans(removeBroadcast(id));
     notify("计划已删除");
+  };
+
+  /** 提交审批 / 审批通过 / 驳回（本机单人审批：留痕即可，接入后可换审批人） */
+  const updateApproval = (plan: BroadcastPlan, action: "submit" | "approve" | "reject") => {
+    const next =
+      action === "submit"
+        ? requestApproval(plan)
+        : decideApproval(plan, action === "approve", action === "reject" ? "审批驳回（本机留痕）" : "");
+    setPlans(upsertBroadcast(next));
+    notify(
+      action === "submit" ? "已提交审批" : action === "approve" ? "已审批通过，可发送" : "已驳回，可修改后再提交",
+    );
   };
 
   const toggleListValue = (list: string[], value: string): string[] =>
@@ -207,7 +248,7 @@ export function BroadcastCenter(props: { leads: LeadRow[]; kfBaseUrl: string; kf
           <div className="console-card-header">
             <div>
               <h2>{draft.id ? "编辑计划" : "新建计划"}</h2>
-              <p>受众为空 = 全部线索；留空排期时间 = 仅手动发送</p>
+              <p>受众为空 = 全部线索；留空排期时间 = 仅手动发送。勾选「需审批」后，审批通过前不会发送（定时同样拦截）。</p>
             </div>
             <button type="button" className="icon-button" aria-label="关闭" onClick={() => setDraft(null)}>
               <X size={16} />
@@ -286,6 +327,15 @@ export function BroadcastCenter(props: { leads: LeadRow[]; kfBaseUrl: string; kf
             </p>
           )}
 
+          <label className="service-check">
+            <input
+              type="checkbox"
+              checked={draft.needApproval}
+              onChange={(event) => setDraft({ ...draft, needApproval: event.target.checked })}
+            />
+            群发前需审批（本机单人留痕；内容或受众改动后自动回到待审批）
+          </label>
+
           <div className="broadcast-editor-actions">
             <button type="button" className="button button-secondary" onClick={() => setDraft(null)}>
               取消
@@ -321,10 +371,25 @@ export function BroadcastCenter(props: { leads: LeadRow[]; kfBaseUrl: string; kf
                   <h3>{plan.name}</h3>
                 </div>
                 <div className="pipeline-card-actions">
-                  <button type="button" className="button button-secondary" onClick={() => void runOne(plan, true)} disabled={busy || !plan.content.trim()}>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={() => void runOne(plan, true)}
+                    disabled={busy || !plan.content.trim() || !isBroadcastSendable(plan)}
+                    title={broadcastBlockReason(plan) || "发送给可送达的受众"}
+                  >
                     {busy ? <LoaderCircle size={15} className="spin" /> : <Play size={15} />}
-                    {busy ? "发送中" : "立即发送"}
+                    {busy ? "发送中" : isBroadcastSendable(plan) ? "立即发送" : "待审批"}
                   </button>
+                  {plan.approval === "pending" && (
+                    <>
+                      <button type="button" className="text-link" onClick={() => updateApproval(plan, "approve")}>通过</button>
+                      <button type="button" className="text-link" onClick={() => updateApproval(plan, "reject")}>驳回</button>
+                    </>
+                  )}
+                  {plan.approval === "none" && (
+                    <button type="button" className="text-link" onClick={() => updateApproval(plan, "submit")}>提交审批</button>
+                  )}
                   <button type="button" className="icon-button" aria-label="编辑" onClick={() => setDraft(toDraft(plan))}>
                     <Clock3 size={15} />
                   </button>
@@ -337,12 +402,16 @@ export function BroadcastCenter(props: { leads: LeadRow[]; kfBaseUrl: string; kf
               <p className="broadcast-content-preview">{renderContent(plan.content, { name: "张三", stage: "跟进中", source: "地图获客" }) || "（内容为空）"}</p>
 
               <div className="pipeline-meta">
+                <span className={`approval-chip ${plan.approval ?? "none"}`}>{approvalLabel(plan)}</span>
                 <span>
                   <Users size={13} /> 受众 {audience.matched.length}（可送达 {audience.deliverable.length}）
                 </span>
                 <span>
                   阶段：{plan.filter.stages.length ? plan.filter.stages.join("、") : "全部"} · 意向：
                   {plan.filter.intents.length ? plan.filter.intents.join("、") : "全部"}
+                  {broadcastRiskHints(plan, audience.deliverable.length).length > 0 && (
+                    <span className="risk-hint">⚠ {broadcastRiskHints(plan, audience.deliverable.length).join(" · ")}</span>
+                  )}
                 </span>
                 <span>{plan.scheduleAt ? `排期 ${formatTime(Date.parse(plan.scheduleAt))}` : "手动发送"}</span>
                 <span>上次：{lastRun ? formatTime(lastRun.at) : "未发送"}</span>
