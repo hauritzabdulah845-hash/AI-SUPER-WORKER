@@ -4,9 +4,19 @@
  */
 import { canSetRole, listByRole, type MediaAsset } from "../src/cloud/media";
 import { buildSrt } from "../src/cloud/mixcut";
+import { demoWav, estimateSpeechSeconds, loadTtsConfig, synthesizeVoice } from "../src/cloud/tts";
+import {
+  advanceJob,
+  loadDigitalProvider,
+  refreshDigitalJob,
+  submitDigitalJob,
+  type DigitalJob,
+} from "../src/cloud/digitalhuman";
 import {
   COPY_SOURCES,
   buildDigitalRecipe,
+  heuristicPlanFromArticle,
+  planFromArticle,
   digitalPlanMarkdown,
   fallbackDigitalPlan,
   fallbackDrafts,
@@ -132,6 +142,45 @@ const mkAsset = (patch: Partial<MediaAsset> & { id: string; name: string }): Med
   // 11. generateDigitalPlan 降级（无模型通道 → fallback）
   const generated = await generateDigitalPlan({ topic: "测试主题", industry: "餐饮", duration: 30, brollGroups: [] });
   check("生成入口可降级返回", generated.segments.length >= 3 && generated.totalDuration === 30 && generated.demo === true);
+
+  // 12. L3 TTS：占位 WAV 合法 + 时长估算
+  const wav = demoWav(6);
+  check("demo WAV 大小=44+16000*6*2", wav.size === 44 + 16000 * 6 * 2, `size=${wav.size}`);
+  const head = new TextDecoder().decode(await wav.slice(0, 4).arrayBuffer());
+  const wave = new TextDecoder().decode(await wav.slice(8, 12).arrayBuffer());
+  check("demo WAV RIFF/WAVE 头", head === "RIFF" && wave === "WAVE", `${head}/${wave}`);
+  check("时长估算 2~60 夹紧", estimateSpeechSeconds("短") === 2 && estimateSpeechSeconds("字".repeat(500)) === 60);
+  const synth = await synthesizeVoice(loadTtsConfig(), "这是一段用于验证的口播文本");
+  check("默认通道出 demo 音轨", synth.demo === true && synth.seconds >= 2 && synth.blob.size > 44, `seconds=${synth.seconds}`);
+
+  // 13. 长文降维（无通道 → 启发式）
+  const longArticle = Array.from({ length: 14 }, (_, index) => `第${index + 1}句讲清楚一个具体做法，以及对应可验证的结果。`).join("");
+  const artPlan = await planFromArticle({ article: longArticle, duration: 45, brollGroups: ["存在的组"], industry: "餐饮" });
+  check("长文方案总长=45", artPlan.totalDuration === 45 && artPlan.segments.reduce((sum, s) => sum + s.duration, 0) === 45);
+  check("长文方案 3~6 段", artPlan.segments.length >= 3 && artPlan.segments.length <= 6, `n=${artPlan.segments.length}`);
+  check("长文字幕≤16", artPlan.segments.every((s) => s.subtitle.length <= 16));
+  check("无通道降级标注 demo", artPlan.demo === true);
+  const tooShort = await planFromArticle({ article: "太短", duration: 30, brollGroups: [], industry: "通用" });
+  check("短文回退演示方案", tooShort.demo === true && tooShort.segments.length >= 3);
+  const heur = heuristicPlanFromArticle(longArticle, 30, []);
+  check("启发式导出可独立调用", heur.demo === true && heur.totalDuration === 30);
+
+  // 14. L4 任务队列：demo 推进 + generic 失败闭环
+  const demoJob = await submitDigitalJob("测试出片", "avatar+audio", loadDigitalProvider());
+  check("空配置提交为 demo 任务", demoJob.demo === true && demoJob.status === "queued", demoJob.note);
+  let advanced: DigitalJob = demoJob;
+  for (let step = 0; step < 8 && advanced.status !== "done"; step += 1) advanced = advanceJob(advanced);
+  check("demo 任务推进到完成", advanced.status === "done" && advanced.progress === 100 && advanced.note.includes("ffmpeg"), advanced.note);
+  const doneCopy: DigitalJob = { ...advanced, status: "done" };
+  const stuck = advanceJob(doneCopy);
+  check("已完成任务不再推进", stuck === doneCopy && stuck.progress === 100);
+  const failedJob = await submitDigitalJob("x", "footage", {
+    ...loadDigitalProvider(),
+    baseUrl: "http://127.0.0.1:1",
+  });
+  check("generic 提交失败记 failed", failedJob.status === "failed" && failedJob.demo === false && failedJob.note.includes("提交失败"), failedJob.note);
+  const polled = await refreshDigitalJob(failedJob, loadDigitalProvider());
+  check("失败任务轮询不翻转", polled.status === "failed");
 
   console.log(`\n${failed === 0 ? "全部通过" : `${failed} 项失败`}`);
   process.exit(failed === 0 ? 0 : 1);

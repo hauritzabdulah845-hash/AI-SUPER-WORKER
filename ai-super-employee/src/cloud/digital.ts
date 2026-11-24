@@ -184,6 +184,104 @@ export interface DigitalSegment {
   subtitle: string;
 }
 
+/** 启发式长文降维（无模型通道）：按句切分→按字数均衡装进 3~6 段→时长归一。 */
+export function heuristicPlanFromArticle(article: string, targetDuration: number, allowedGroups: string[]): DigitalPlan {
+  const sentences = article
+    .split(/[。！？；\n]+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 6);
+  const segCount = Math.min(6, Math.max(3, Math.round(article.length / 150)));
+
+  // 按字数贪心装袋：目标每袋字数 = 总字数 / 段数
+  const bags: string[][] = Array.from({ length: Math.min(segCount, Math.max(1, sentences.length)) }, () => []);
+  for (const sentence of sentences) {
+    const bag = bags.reduce((best, current) =>
+      current.reduce((sum, s) => sum + s.length, 0) < best.reduce((sum, s) => sum + s.length, 0) ? current : best,
+    bags[0]);
+    bag.push(sentence);
+  }
+  const segments = bags
+    .filter((bag) => bag.length > 0)
+    .map((bag) => {
+      const script = bag.join("。").slice(0, 100);
+      return { script, duration: 0, subtitle: script.slice(0, 14) };
+    });
+
+  if (segments.length === 0) return fallbackDigitalPlan("长文降维", targetDuration);
+  return {
+    title: article.trim().slice(0, 24) || "长文口播",
+    segments: normalizeSegments(segments, targetDuration, allowedGroups),
+    totalDuration: targetDuration,
+    voiceVersions: ["原声中速", "活力加速", "沉稳降速"],
+    assetHints: ["按段落主题补分镜图", "结尾段配 CTA 字卡"],
+    demo: true,
+  };
+}
+
+/** 长文转口播方案：有模型通道走结构化提取，失败降级启发式切分（demo 标注）。 */
+export async function planFromArticle(input: {
+  article: string;
+  duration: number;
+  brollGroups: string[];
+  industry: string;
+}): Promise<DigitalPlan> {
+  const article = input.article.trim();
+  const targetDuration = Math.min(300, Math.max(10, input.duration));
+  const fallback = () => heuristicPlanFromArticle(article, targetDuration, input.brollGroups);
+  if (!article || article.length < 40) {
+    return { ...fallbackDigitalPlan("长文太短，先贴 40 字以上正文", targetDuration) };
+  }
+  try {
+    const { text } = await askLLM(
+      [
+        {
+          role: "system",
+          content: [
+            "把长文降维成口播分镜，只输出 JSON：",
+            '{"title":"不超过25字","segments":[{"script":"口播台词≤80字","duration":秒数,"subtitle":"≤14字","brollGroup":"可选，只能用给定组名"}],"voiceVersions":["风格一","风格二"],"assetHints":["素材建议"]}',
+            `目标总时长 ${targetDuration} 秒，3~6 段，duration 合计等于目标；保留原文事实，禁止编造价格与承诺。`,
+          ].join("\n"),
+        },
+        {
+          role: "user",
+          content: [
+            `行业：${input.industry || "通用"}`,
+            `可用副画面组：${input.brollGroups.join("、") || "（无，省略 brollGroup）"}`,
+            `=== 原文 ===\n${article.slice(0, 6000)}`,
+          ].join("\n"),
+        },
+      ],
+      { json: true },
+    );
+    const parsed = JSON.parse(text.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim()) as {
+      title?: unknown;
+      segments?: unknown;
+      voiceVersions?: unknown;
+      assetHints?: unknown;
+    };
+    const segments = normalizeSegments(parsed.segments, targetDuration, input.brollGroups);
+    if (segments.length < 2) return fallback();
+    const voiceVersions = (Array.isArray(parsed.voiceVersions) ? parsed.voiceVersions : [])
+      .map((item) => (typeof item === "string" ? item.trim() : ""))
+      .filter(Boolean)
+      .slice(0, 3);
+    const assetHints = (Array.isArray(parsed.assetHints) ? parsed.assetHints : [])
+      .map((item) => (typeof item === "string" ? item.trim() : ""))
+      .filter(Boolean)
+      .slice(0, 6);
+    return {
+      title: (typeof parsed.title === "string" && parsed.title.trim() ? parsed.title : article.slice(0, 24)).slice(0, 30),
+      totalDuration: segments.reduce((total, segment) => total + segment.duration, 0),
+      segments,
+      voiceVersions: voiceVersions.length ? voiceVersions : ["原声中速"],
+      assetHints: assetHints.length ? assetHints : ["按段落补图"],
+      demo: false,
+    };
+  } catch {
+    return fallback();
+  }
+}
+
 export interface DigitalPlan {
   title: string;
   totalDuration: number;
