@@ -19,7 +19,8 @@
     "verify:c": "node scripts/c-group-verify.mjs",
     "test:ops2": "tsx scripts/ops2-check.ts",
     "test:ops3": "tsx scripts/ops3-check.ts",
-    "test:zip": "node scripts/zipcheck.mjs"
+    "test:zip": "node scripts/zipcheck.mjs",
+    "test:sidebar": "node scripts/sidebar-check.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

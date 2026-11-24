@@ -161,29 +161,40 @@ import {
 import { parseLeadsCsv, type LeadImportRow } from "../cloud/leadcsv";
 import { summarizeTasks, taskStatsHeadline } from "../cloud/tasksummary";
 
+/**
+ * 侧栏导航。分组只为可读性——分组间用吸顶小标题隔开，
+ * `label` 仍是 activeNav 的唯一键（改名会破坏路由与既有状态）。
+ */
+const NAV_GROUP = {
+  core: "工作台",
+  sales: "获客与转化",
+  content: "内容与创作",
+  system: "设置",
+} as const;
+
 const navItems = [
-  { label: "AI 总控", icon: LayoutDashboard },
-  { label: "远程指令", icon: Inbox },
-  { label: "智能体团队", icon: Bot },
-  { label: "任务中心", icon: FolderKanban },
-  { label: "定时任务", icon: Timer },
-  { label: "模板中心", icon: Sparkles },
-  { label: "内容工厂", icon: FileText },
-  { label: "聚合发布", icon: Megaphone },
-  { label: "线索与客户", icon: Users },
-  { label: "地图获客", icon: MapIcon },
-  { label: "企业知识库", icon: BookOpen },
-  { label: "企微私域", icon: MessageSquareText },
-  { label: "群发计划", icon: Send },
-  { label: "客服渠道", icon: Radio },
-  { label: "GEO 工作台", icon: Globe2 },
-  { label: "数据洞察", icon: BarChart3 },
-  { label: "AI 创作", icon: Palette },
-  { label: "视频创作", icon: Clapperboard },
-  { label: "混剪工坊", icon: Scissors },
-  { label: "数字人工坊", icon: Mic },
-  { label: "AI 办公", icon: Presentation },
-  { label: "模型接入", icon: Plug },
+  { label: "AI 总控", icon: LayoutDashboard, group: NAV_GROUP.core },
+  { label: "远程指令", icon: Inbox, group: NAV_GROUP.core },
+  { label: "智能体团队", icon: Bot, group: NAV_GROUP.core },
+  { label: "任务中心", icon: FolderKanban, group: NAV_GROUP.core },
+  { label: "定时任务", icon: Timer, group: NAV_GROUP.core },
+  { label: "模板中心", icon: Sparkles, group: NAV_GROUP.core },
+  { label: "线索与客户", icon: Users, group: NAV_GROUP.sales },
+  { label: "地图获客", icon: MapIcon, group: NAV_GROUP.sales },
+  { label: "企微私域", icon: MessageSquareText, group: NAV_GROUP.sales },
+  { label: "群发计划", icon: Send, group: NAV_GROUP.sales },
+  { label: "客服渠道", icon: Radio, group: NAV_GROUP.sales },
+  { label: "GEO 工作台", icon: Globe2, group: NAV_GROUP.sales },
+  { label: "数据洞察", icon: BarChart3, group: NAV_GROUP.sales },
+  { label: "内容工厂", icon: FileText, group: NAV_GROUP.content },
+  { label: "聚合发布", icon: Megaphone, group: NAV_GROUP.content },
+  { label: "企业知识库", icon: BookOpen, group: NAV_GROUP.content },
+  { label: "AI 创作", icon: Palette, group: NAV_GROUP.content },
+  { label: "视频创作", icon: Clapperboard, group: NAV_GROUP.content },
+  { label: "混剪工坊", icon: Scissors, group: NAV_GROUP.content },
+  { label: "数字人工坊", icon: Mic, group: NAV_GROUP.content },
+  { label: "AI 办公", icon: Presentation, group: NAV_GROUP.content },
+  { label: "模型接入", icon: Plug, group: NAV_GROUP.system },
 ];
 
 const STAGE_FLOW = ["新建", "跟进中", "已预约", "已成交"];
@@ -1542,23 +1553,31 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
         </div>
 
         <nav className="console-nav" aria-label="产品功能">
-          <span className="console-nav-label">工作台</span>
-          {navItems.map((item) => {
-            const Icon = item.icon;
+          {Object.values(NAV_GROUP).map((group) => {
+            const items = navItems.filter((item) => item.group === group);
+            if (!items.length) return null;
             return (
-              <button
-                type="button"
-                key={item.label}
-                className={activeNav === item.label ? "active" : ""}
-                onClick={() => {
-                  setActiveNav(item.label);
-                  setMobileNav(false);
-                }}
-              >
-                <Icon size={18} />
-                {item.label}
-                {item.label === "任务中心" && tasks.length > 0 && <span className="nav-count">{tasks.length}</span>}
-              </button>
+              <div className="console-nav-group" key={group}>
+                <span className="console-nav-label">{group}</span>
+                {items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      type="button"
+                      key={item.label}
+                      className={activeNav === item.label ? "active" : ""}
+                      onClick={() => {
+                        setActiveNav(item.label);
+                        setMobileNav(false);
+                      }}
+                    >
+                      <Icon size={18} />
+                      {item.label}
+                      {item.label === "任务中心" && tasks.length > 0 && <span className="nav-count">{tasks.length}</span>}
+                    </button>
+                  );
+                })}
+              </div>
             );
           })}
         </nav>

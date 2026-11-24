@@ -2310,6 +2310,9 @@
   display: flex;
   flex-direction: column;
   width: 232px;
+  /* 侧栏本身不滚动：品牌区与底部固定，中间导航区独立滚动。
+     导航项随批次增加（当前 22 项 ≈ 900px），矮屏下必须能滚。 */
+  overflow: hidden;
   padding: 20px 14px 15px;
   background: #fff;
   border-right: 1px solid #e8e6ee;
@@ -2320,6 +2323,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 7px;
+  flex: 0 0 auto;
 }
 
 .console-brand .brand-mark {
@@ -2340,6 +2344,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
+  flex: 0 0 auto;
   width: 100%;
   margin-top: 25px;
   padding: 10px;
@@ -2390,6 +2395,44 @@
   flex-direction: column;
   gap: 4px;
   margin-top: 26px;
+  /* 占满品牌区与底部之间的剩余高度，并在此区域内滚动 */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* 给滚动条留位置，避免文字被压 */
+  padding-right: 4px;
+  margin-right: -4px;
+  /* 上下渐隐，提示"还有更多" */
+  scrollbar-width: thin;
+  scrollbar-color: #d8d5e0 transparent;
+}
+
+.console-nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.console-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.console-nav::-webkit-scrollbar-thumb {
+  background: #ddd9e4;
+  border-radius: 3px;
+}
+
+.console-nav::-webkit-scrollbar-thumb:hover {
+  background: #c9c4d2;
+}
+
+/* 导航分组标签在滚动时吸顶，长列表里始终知道自己在哪一组 */
+.console-nav-label {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-top: 2px;
+  padding-bottom: 6px;
+  background: #fff;
 }
 
 .console-nav-label {
@@ -2440,7 +2483,9 @@
 }
 
 .sidebar-capacity {
-  margin-top: auto;
+  /* 导航区已 flex:1 占满剩余高度，这里只做固定高度块（矮屏下不挤压导航） */
+  flex: 0 0 auto;
+  margin-top: 10px;
   padding: 14px;
   background: #f8f7fb;
   border: 1px solid #ebe9f0;
@@ -2491,6 +2536,7 @@
 }
 
 .back-to-site {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -8888,3 +8934,17 @@ button.console-search:hover { border-color: #8a78e4; }
 .bundle-preview li { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; color: var(--muted-ink); }
 .bundle-preview code { font-family: ui-monospace, monospace; color: var(--ink); }
 .kb-terms { display: block; font-style: normal; color: var(--purple-dark); font-weight: 600; font-size: 11px; }
+
+/* 侧栏导航分组：组间留白，组内紧凑 */
+.console-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.console-nav-group + .console-nav-group {
+  margin-top: 6px;
+}
+.console-nav-group .console-nav-label {
+  margin: 6px 10px 4px;
+  padding-top: 6px;
+}
