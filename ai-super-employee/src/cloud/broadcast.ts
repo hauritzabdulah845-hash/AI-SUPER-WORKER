@@ -26,6 +26,8 @@ export interface BroadcastHistoryEntry {
   detail: string;
 }
 
+export type BroadcastApproval = "none" | "pending" | "approved" | "rejected";
+
 export interface BroadcastPlan {
   id: string;
   name: string;
@@ -36,6 +38,10 @@ export interface BroadcastPlan {
   status: "draft" | "scheduled" | "done";
   createdAt: number;
   history: BroadcastHistoryEntry[];
+  /** 风控审批：需要审批的计划 approve=false 时不得发送（定时任务同样受拦） */
+  approval?: BroadcastApproval;
+  approvalNote?: string;
+  approvalAt?: number;
 }
 
 const STORAGE_KEY = "ai-employee:broadcasts";
@@ -124,7 +130,66 @@ export function createBroadcast(name: string): BroadcastPlan {
     status: "draft",
     createdAt: Date.now(),
     history: [],
+    approval: "none",
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* 风控审批（群发前人工确认）                                            */
+/* ------------------------------------------------------------------ */
+
+export function approvalLabel(plan: BroadcastPlan): string {
+  switch (plan.approval ?? "none") {
+    case "pending":
+      return "待审批";
+    case "approved":
+      return "已审批";
+    case "rejected":
+      return "已驳回";
+    default:
+      return "免审批";
+  }
+}
+
+/** 计划是否可发送：免审批 / 已审批放行；待审批与已驳回一律拦截。 */
+export function isBroadcastSendable(plan: BroadcastPlan): boolean {
+  const approval = plan.approval ?? "none";
+  return approval === "none" || approval === "approved";
+}
+
+/** 拦截原因（可发送时为空串），供 UI 提示与调度跳过统计共用。 */
+export function broadcastBlockReason(plan: BroadcastPlan): string {
+  const approval = plan.approval ?? "none";
+  if (approval === "pending") return "群发前风控：等待审批，未发送";
+  if (approval === "rejected") return `群发已驳回${plan.approvalNote ? `：${plan.approvalNote}` : ""}，未发送`;
+  return "";
+}
+
+/** 提交审批：草稿 → 待审批。 */
+export function requestApproval(plan: BroadcastPlan): BroadcastPlan {
+  if (plan.approval === "approved") return plan;
+  return { ...plan, approval: "pending", approvalNote: "", approvalAt: undefined };
+}
+
+export function decideApproval(plan: BroadcastPlan, approved: boolean, note = ""): BroadcastPlan {
+  return { ...plan, approval: approved ? "approved" : "rejected", approvalNote: approved ? "" : note.trim(), approvalAt: Date.now() };
+}
+
+/**
+ * 风险预检（不阻断，仅提示）：给审批人一个「这条内容像不像群发风险」的参考。
+ * 规则保守、只提醒不拦截，避免把正常营销话术当违规。
+ */
+export function broadcastRiskHints(plan: BroadcastPlan, audienceSize: number, now = Date.now()): string[] {
+  const hints: string[] = [];
+  const content = plan.content ?? "";
+  if (!content.trim()) hints.push("内容为空");
+  if (audienceSize > 200) hints.push(`受众 ${audienceSize} 人（>200，建议分批）`);
+  const risky = ["最便宜", "全网最低", "包治", "稳赚", "保证收益", "第一", "国家级", "绝对"];
+  const hits = risky.filter((word) => content.includes(word));
+  if (hits.length) hints.push(`疑似违禁表述：${hits.join("、")}`);
+  if ((content.match(/\{\{/g) ?? []).length > 0 && audienceSize === 0) hints.push("含变量但无受众");
+  if (plan.scheduleAt && Date.parse(plan.scheduleAt) < now) hints.push("排期时间已过");
+  return hints;
 }
 
 /* ------------------------------------------------------------------ */
@@ -226,7 +291,7 @@ export async function executeBroadcast(
   }
 }
 
-/** 到点检查：返回应执行的计划（纯判定，供调度与测试共用）。 */
+/** 到点检查：返回应执行的计划（纯判定，供调度与测试共用）。需审批未放行的一律不进入队列。 */
 export function dueBroadcasts(list: BroadcastPlan[], now: number): BroadcastPlan[] {
-  return list.filter((plan) => isBroadcastDue(plan, now));
+  return list.filter((plan) => isBroadcastDue(plan, now) && isBroadcastSendable(plan));
 }
