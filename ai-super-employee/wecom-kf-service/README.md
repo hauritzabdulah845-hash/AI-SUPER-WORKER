@@ -25,14 +25,23 @@ node test/run-test.mjs               # 本地全链路自测（mock，不真发�
 | `miniThumbMediaId` | ⬜ | 小程序消息封面图 media_id（企微要求时再配） |
 | `deepseekKey` + `aiFallback` | ⬜ | 规则未命中时用 AI 判断意图，默认关闭 |
 | `adminSecret` | ✅ | 保护 `/api/sync` 与 `/admin/rules`，同时是控制台「企微客户同步」里要填的密钥 |
+| `alertWebhook` | ⬜ | 企微群机器人 webhook 地址：客户阶段跃迁到「报价 / 成交 / 试用」时推送提醒（留空不启用） |
 
 ## 接口
 
 - `GET /wecom/callback` — 企微回调 URL 验证（解密 echostr 回显）
 - `POST /wecom/callback` — 消息事件：先回 success，再异步 `sync_msg` → 规则匹配 → `send_msg`
 - `GET /health` — 健康检查
-- `GET /admin/rules?secret=xxx` — 查看当前规则与最近 20 条发送记录
-- `GET /api/sync?secret=xxx&since=N` — 客户档案 + 对话事件增量拉取（控制台用它做身份打通）
+- `GET /admin/rules` — 查看当前规则与最近 20 条发送记录
+- `GET /api/sync?since=N` — 客户档案 + 对话事件增量拉取（控制台用它做身份打通）
+
+两个管理接口都用 `adminSecret` 鉴权，**推荐走请求头**（密钥不进 URL，避免落到浏览器历史与网关访问日志）：
+
+```bash
+curl -H "x-admin-secret: 你的adminSecret" "https://你的域名/api/sync?since=0"
+```
+
+为兼容旧调用方式，`?secret=xxx` 查询参数仍然有效。
 
 ## 客户档案（身份打通）
 

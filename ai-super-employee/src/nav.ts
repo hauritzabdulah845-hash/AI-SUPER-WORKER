@@ -1,14 +1,20 @@
 /** 总控台模块与 URL hash 的映射，用于深链分享与刷新保持。 */
 export const NAV_SLUGS: Record<string, string> = {
   "AI 总控": "overview",
+  远程指令: "im",
   智能体团队: "agents",
   任务中心: "tasks",
+  定时任务: "pipeline",
   模板中心: "templates",
   内容工厂: "content",
+  聚合发布: "publish",
   线索与客户: "leads",
   企业知识库: "knowledge",
   企微私域: "wecom",
+  "GEO 工作台": "geo",
   数据洞察: "insights",
+  视频创作: "video",
+  混剪工坊: "mixcut",
   "AI 创作": "studio",
   模型接入: "channels",
 };

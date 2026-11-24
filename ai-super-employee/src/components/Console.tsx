@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleDot,
+  Clapperboard,
   ClipboardCopy,
   Clock3,
   Download,
@@ -21,12 +22,15 @@ import {
   FolderOpen,
   FolderPlus,
   Gauge,
+  Globe2,
   HardDrive,
+  Inbox,
   KeyRound,
   LayoutDashboard,
   Link2,
   LoaderCircle,
   LogIn,
+  Megaphone,
   Menu,
   ImagePlus,
   MessageSquareText,
@@ -36,6 +40,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Scissors,
   ScrollText,
   Wand2,
   Search,
@@ -43,6 +48,7 @@ import {
   Sparkles,
   Target,
   Trash2,
+  Timer,
   TrendingUp,
   Users,
   X,
@@ -51,6 +57,13 @@ import {
 import CommandDemo from "./CommandDemo";
 import { KfSyncCard } from "./KfSyncCard";
 import { WecomGuide } from "./WecomGuide";
+import { GeoWorkbench } from "./GeoWorkbench";
+import { VideoStudio } from "./VideoStudio";
+import { CommandInbox } from "./CommandInbox";
+import { MixStudio } from "./MixStudio";
+import { PipelineCenter } from "./PipelineCenter";
+import { OpsReportCard } from "./OpsReportCard";
+import { PublishHub } from "./PublishHub";
 import {
   clearArtworks,
   generateImage,
@@ -134,15 +147,21 @@ import {
 
 const navItems = [
   { label: "AI 总控", icon: LayoutDashboard },
+  { label: "远程指令", icon: Inbox },
   { label: "智能体团队", icon: Bot },
   { label: "任务中心", icon: FolderKanban },
+  { label: "定时任务", icon: Timer },
   { label: "模板中心", icon: Sparkles },
   { label: "内容工厂", icon: FileText },
+  { label: "聚合发布", icon: Megaphone },
   { label: "线索与客户", icon: Users },
   { label: "企业知识库", icon: BookOpen },
   { label: "企微私域", icon: MessageSquareText },
+  { label: "GEO 工作台", icon: Globe2 },
   { label: "数据洞察", icon: BarChart3 },
   { label: "AI 创作", icon: Palette },
+  { label: "视频创作", icon: Clapperboard },
+  { label: "混剪工坊", icon: Scissors },
   { label: "模型接入", icon: Plug },
 ];
 
@@ -522,6 +541,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       const progress = (done: number, total: number, name: string) => setKbProgress(`${done}/${total} · ${name || "完成"}`);
       const handle = await loadHandle();
       let imported = 0;
+      let updated = 0;
       let failed = 0;
       let firstError = "";
 
@@ -530,6 +550,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
         if (!granted) throw new Error("未获得文件夹读取权限");
         const outcome = await importItems(handle, chosen, { folderName: kbScan.folder, ownerName: user?.name ?? null, onProgress: progress });
         imported = outcome.imported;
+        updated = outcome.updated;
         failed = outcome.failed;
         firstError = outcome.errors[0] ?? "";
       } else if (fallbackMapRef.current) {
@@ -539,6 +560,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
           onProgress: progress,
         });
         imported = outcome.imported;
+        updated = outcome.updated;
         failed = outcome.failed;
         firstError = outcome.errors[0] ?? "";
       } else {
@@ -546,8 +568,9 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       }
 
       await load();
-      setKbResult(`已导入 ${imported} 份资料${failed ? `，${failed} 份失败：${firstError}` : "，智能体现在可以调用这些内容"}`);
-      setToast(`导入完成：成功 ${imported} 份`);
+      const updatedPart = updated ? `，更新 ${updated} 份已存在的资料` : "";
+      setKbResult(`已导入 ${imported} 份资料${updatedPart}${failed ? `，${failed} 份失败：${firstError}` : "，智能体现在可以调用这些内容"}`);
+      setToast(`导入完成：新增 ${imported} 份${updated ? ` · 更新 ${updated} 份` : ""}`);
     } catch (error) {
       setToast(error instanceof Error ? error.message : "导入失败");
     } finally {
@@ -920,9 +943,10 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
     }
     setKfSyncing(true);
     try {
+      // 密钥走请求头而不是 query：URL 会进浏览器历史与网关访问日志。
       const res = await fetch(
-        `${base}/api/sync?secret=${encodeURIComponent(kfConfig.secret.trim())}&since=${kfConfig.lastSeq}`,
-        { headers: { accept: "application/json" } },
+        `${base}/api/sync?since=${kfConfig.lastSeq}`,
+        { headers: { accept: "application/json", "x-admin-secret": kfConfig.secret.trim() } },
       );
       if (res.status === 403) throw new Error("同步密钥不对，请核对服务端 adminSecret");
       if (!res.ok) throw new Error(`服务返回 ${res.status}，检查地址与服务是否在运行`);
@@ -935,9 +959,11 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       if (!payload.ok) throw new Error("服务返回异常，检查 /api/sync 是否正常");
 
       const leadIdMap = new Map<string, number>();
+      /** 只有本次真的来了新消息的客户才允许覆盖「最新需求」，避免同步把人工编辑冲掉。 */
+      const activeIds = new Set(payload.events.map((event) => event.externalUserId));
       let createdCount = 0;
       for (const customer of payload.customers) {
-        const { leadId, created } = await upsertLeadByExternalId(customer);
+        const { leadId, created } = await upsertLeadByExternalId(customer, { touchNeed: activeIds.has(customer.externalUserId) });
         leadIdMap.set(customer.externalUserId, leadId);
         if (created) createdCount += 1;
       }
@@ -956,7 +982,14 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       }
 
       saveKfConfig({ lastSeq: payload.nextSeq, lastAt: new Date().toISOString() });
-      const summary = `新增 ${createdCount} 位客户 · 导入 ${imported} 条对话${payload.events.length === 0 ? "（暂无新消息）" : ""}`;
+      const hotStages = ["报价", "成交", "试用", "已预约"];
+      const hotCount = payload.customers.filter(
+        (item) => activeIds.has(item.externalUserId) && hotStages.includes(item.stage),
+      ).length;
+      const summary =
+        `新增 ${createdCount} 位客户 · 导入 ${imported} 条对话` +
+        (hotCount ? ` · ${hotCount} 位高意向` : "") +
+        (payload.events.length === 0 ? "（暂无新消息）" : "");
       setKfSummary(summary);
       setToast(`企微同步完成：${summary}`);
       setLeads(await listLeads());
@@ -1574,6 +1607,10 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
             </>
           )}
 
+          {activeNav === "远程指令" && (
+            <CommandInbox onExecute={(goal) => openComposer({ goal })} />
+          )}
+
           {activeNav === "智能体团队" && (
             <section className="agent-management-grid">
               {agents.map((agent) => (
@@ -1634,6 +1671,8 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
               {filteredTasks.length === 0 && <div className="empty-search"><Search size={24} /><strong>没有符合条件的任务</strong><span>切换筛选条件，或创建一条新任务</span></div>}
             </section>
           )}
+
+          {activeNav === "定时任务" && <PipelineCenter />}
 
           {activeNav === "模板中心" && (
             <section className="template-center">
@@ -1714,6 +1753,10 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                 ))}
               </div>
             </section>
+          )}
+
+          {activeNav === "聚合发布" && (
+            <PublishHub contents={contentOutputs} />
           )}
 
           {activeNav === "线索与客户" && (
@@ -1861,6 +1904,10 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
             </section>
           )}
 
+          {activeNav === "GEO 工作台" && (
+            <GeoWorkbench knowledge={knowledge} />
+          )}
+
           {activeNav === "数据洞察" && (
             <section className="insights-grid">
               <div className="console-card insight-hero">
@@ -1919,7 +1966,16 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                   </div>
                 ))}
               </div>
+                          <OpsReportCard tasks={tasks} leads={leads} knowledgeCount={knowledge.length} contentCount={contentOutputs.length} />
             </section>
+          )}
+
+          {activeNav === "视频创作" && (
+            <VideoStudio />
+          )}
+
+          {activeNav === "混剪工坊" && (
+            <MixStudio />
           )}
 
           {activeNav === "模型接入" && (
@@ -1987,6 +2043,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                   <li>或启用自定义通道 —— 用你自己的 Key，不受平台限制</li>
                   <li>通道修好后，到「任务中心」对失败任务点「重跑」即可补齐产出</li>
                   <li>配额受限时任务会快速失败并提示原因，不会长时间空转</li>
+                  <li>视频通道（Seedance / OpenAI Video）在「视频创作」页右上角配置，与文本通道相互独立</li>
                 </ul>
               </div>
             </section>

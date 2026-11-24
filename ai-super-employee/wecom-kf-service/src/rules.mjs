@@ -3,17 +3,31 @@
  * 回复只有两种类型：text（指定内容）与 miniprogram（AI 名片）。
  */
 
-/** 完全相等或包含即命中；按数组顺序取第一条，最后用 isDefault 兜底。 */
-export function matchRule(rules, text) {
+/** 只做关键词匹配：完全相等或包含即命中，按数组顺序取第一条；不命中返回 null。 */
+export function matchKeywordRule(rules, text) {
   const content = (text ?? "").trim();
-  if (!content) return rules.find((rule) => rule.isDefault) ?? null;
+  if (!content) return null;
   for (const rule of rules) {
     if (rule.enabled === false || !Array.isArray(rule.keywords)) continue;
     if (rule.keywords.some((keyword) => keyword && (content === keyword || content.includes(keyword)))) {
       return rule;
     }
   }
+  return null;
+}
+
+/** 取兜底规则（isDefault）。 */
+export function matchDefaultRule(rules) {
   return rules.find((rule) => rule.isDefault && rule.enabled !== false) ?? null;
+}
+
+/**
+ * 关键词优先，最后用 isDefault 兜底（不含 AI 意图识别）。
+ * 服务端的真实顺序是「关键词 → AI 兜底 → 默认规则」，用 matchKeywordRule +
+ * matchDefaultRule 组合，避免默认规则把 AI 兜底挡在前面。
+ */
+export function matchRule(rules, text) {
+  return matchKeywordRule(rules, text) ?? matchDefaultRule(rules);
 }
 
 /**

@@ -5,12 +5,13 @@
  * 关键约束：回调必须 5 秒内响应，所以先回 success 再异步处理。
  */
 import http from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decrypt, signature, parseXml, escapeXml } from "./crypto.mjs";
 import { WecomClient } from "./wecom.mjs";
-import { matchRule, pickRuleByAI, buildReply } from "./rules.mjs";
+import { matchKeywordRule, matchDefaultRule, pickRuleByAI, buildReply } from "./rules.mjs";
 import { createCustomerStore, renderTemplate } from "./customers.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -31,6 +32,9 @@ export function loadConfig(configPath = join(ROOT, "config.json")) {
     aiFallback: raw.aiFallback === true,
     mock: raw.mock === true,
     adminSecret: process.env.ADMIN_SECRET ?? raw.adminSecret ?? "",
+    // 企微群机器人 webhook：客户阶段跃迁到高意向时推送提醒（留空则不启用）
+    alertWebhook: process.env.ALERT_WEBHOOK ?? raw.alertWebhook ?? "",
+    alertStages: Array.isArray(raw.alertStages) && raw.alertStages.length ? raw.alertStages : ["报价", "成交", "试用"],
     dataDir: raw.dataDir ?? join(ROOT, "data"),
   };
   return config;
@@ -74,64 +78,109 @@ export function createService({ config, rules, logger = console }) {
   const store = createStore(config.dataDir);
   const customers = createCustomerStore(config.dataDir);
 
+  /**
+   * 高意向实时提醒：阶段跃迁进「报价/成交/试用」时推企微群机器人。
+   * 失败只记日志不打断回复链路——提醒是增值动作，不是主流程。
+   */
+  async function notifyHighIntent({ customer, stageFrom, text }) {
+    if (!config.alertWebhook || !customer) return;
+    const content = [
+      "🔔 高意向客户提醒",
+      `客户：${customer.name}（${customer.externalUserId.slice(-6)}）`,
+      `阶段：${stageFrom || "新建"} → ${customer.stage}`,
+      `最新一句：${String(text ?? "").slice(0, 80)}`,
+    ].join("\n");
+    try {
+      const res = await fetch(config.alertWebhook, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ msgtype: "text", text: { content } }),
+      });
+      logger.info(`高意向提醒已推送（HTTP ${res.status}）`);
+    } catch (error) {
+      logger.warn(`高意向提醒推送失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   /** 异步处理一条客服事件：拉消息 → 逐条匹配 → 回复。 */
   async function handleKfEvent({ kfToken, openKfid }) {
     try {
-      const cursor = store.getCursor(openKfid);
-      const data = await client.syncMsg({ kfToken, openKfid, cursor });
+      let cursor = store.getCursor(openKfid);
+      // sync_msg 单次上限 1000 条：has_more=1 时继续拉，避免积压消息卡在旧游标上。
+      for (;;) {
+        const data = await client.syncMsg({ kfToken, openKfid, cursor });
+        const previous = cursor;
 
-      for (const msg of data.msg_list ?? []) {
-        // origin=3 是微信客户发送的消息，其余是接待人员或系统事件
-        if (msg.origin !== 3) continue;
-        if (store.isSeen(msg.msgid)) continue;
-        store.markSeen(msg.msgid);
-        if (msg.msgtype !== "text") {
-          // 非文本消息目前不回复，但仍记一笔，保证控制台能看到客户发过什么
-          customers.touch({ externalUserId: msg.external_userid, openKfid, text: `[${msg.msgtype}]`, at: msg.send_time ? new Date(msg.send_time * 1000).toISOString() : undefined });
-          customers.record({ externalUserId: msg.external_userid, direction: "in", type: msg.msgtype, text: `[${msg.msgtype}]` });
-          logger.info(`收到非文本消息（${msg.msgtype}），已记录未回复`);
-          continue;
+        for (const msg of data.msg_list ?? []) {
+          // origin=3 是微信客户发送的消息，其余是接待人员或系统事件
+          if (msg.origin !== 3) continue;
+          if (store.isSeen(msg.msgid)) continue;
+          store.markSeen(msg.msgid);
+          if (msg.msgtype !== "text") {
+            // 非文本消息目前不回复，但仍记一笔，保证控制台能看到客户发过什么
+            customers.touch({ externalUserId: msg.external_userid, openKfid, text: `[${msg.msgtype}]`, at: msg.send_time ? new Date(msg.send_time * 1000).toISOString() : undefined });
+            customers.record({ externalUserId: msg.external_userid, direction: "in", type: msg.msgtype, text: `[${msg.msgtype}]` });
+            logger.info(`收到非文本消息（${msg.msgtype}），已记录未回复`);
+            continue;
+          }
+
+          const text = msg.text?.content ?? "";
+          const at = msg.send_time ? new Date(msg.send_time * 1000).toISOString() : new Date().toISOString();
+          const stageBefore = customers.get(msg.external_userid)?.stage ?? "";
+          const customer = customers.touch({ externalUserId: msg.external_userid, openKfid, text, at });
+          customers.record({ externalUserId: msg.external_userid, direction: "in", text, at });
+
+          // 只在「跃迁进高意向」时提醒，避免同一阶段每条消息都轰炸群。
+          // alertStages 允许缺失（老配置 / 测试配置），缺省用默认三档。
+          const alertStages = Array.isArray(config.alertStages) ? config.alertStages : ["报价", "成交", "试用"];
+          if (customer && alertStages.includes(customer.stage) && !alertStages.includes(stageBefore)) {
+            void notifyHighIntent({ customer, stageFrom: stageBefore, text });
+          }
+
+          // 匹配顺序：关键词 → AI 意图识别（可选）→ 默认兜底。
+          // 关键词没命中时先问 AI，AI 也没给出规则才落到默认话术——
+          // 否则默认规则会把 AI 兜底永远挡在前面（aiFallback 形同虚设）。
+          let rule = matchKeywordRule(rules, text);
+          if (!rule && config.aiFallback && config.deepseekKey) {
+            rule = await pickRuleByAI({ rules, text, apiKey: config.deepseekKey });
+          }
+          if (!rule) rule = matchDefaultRule(rules);
+          const reply = buildReply(rule, config);
+          if (!reply) {
+            logger.warn(`未命中任何规则，客户消息：${text}`);
+            continue;
+          }
+
+          if (reply.type === "miniprogram") {
+            await client.sendMiniProgram({
+              externalUserId: msg.external_userid,
+              openKfid,
+              appid: reply.appid,
+              title: reply.title,
+              pagepath: reply.pagepath,
+              thumbMediaId: reply.thumbMediaId,
+            });
+            customers.record({ externalUserId: msg.external_userid, direction: "out", type: "miniprogram", text: `[AI 名片] ${reply.title}`, ruleId: rule?.id ?? "" });
+            logger.info(`已向 ${msg.external_userid}（${customer?.name}）发送小程序名片：${reply.pagepath}`);
+          } else {
+            const content = renderTemplate(reply.content, customer);
+            await client.sendText({
+              externalUserId: msg.external_userid,
+              openKfid,
+              content,
+            });
+            customers.record({ externalUserId: msg.external_userid, direction: "out", text: content, ruleId: rule?.id ?? "" });
+            logger.info(`已向 ${msg.external_userid}（${customer?.name}）发送文本回复（${content.length} 字）`);
+          }
         }
 
-        const text = msg.text?.content ?? "";
-        const at = msg.send_time ? new Date(msg.send_time * 1000).toISOString() : new Date().toISOString();
-        const customer = customers.touch({ externalUserId: msg.external_userid, openKfid, text, at });
-        customers.record({ externalUserId: msg.external_userid, direction: "in", text, at });
-
-        let rule = matchRule(rules, text);
-        if (!rule && config.aiFallback && config.deepseekKey) {
-          rule = await pickRuleByAI({ rules, text, apiKey: config.deepseekKey });
+        // 记录游标再继续：中途抛错时不推进游标，配合 msgid 去重可安全重试。
+        if (data.next_cursor) {
+          cursor = data.next_cursor;
+          store.setCursor(openKfid, cursor);
         }
-        const reply = buildReply(rule, config);
-        if (!reply) {
-          logger.warn(`未命中任何规则，客户消息：${text}`);
-          continue;
-        }
-
-        if (reply.type === "miniprogram") {
-          await client.sendMiniProgram({
-            externalUserId: msg.external_userid,
-            openKfid,
-            appid: reply.appid,
-            title: reply.title,
-            pagepath: reply.pagepath,
-            thumbMediaId: reply.thumbMediaId,
-          });
-          customers.record({ externalUserId: msg.external_userid, direction: "out", type: "miniprogram", text: `[AI 名片] ${reply.title}`, ruleId: rule?.id ?? "" });
-          logger.info(`已向 ${msg.external_userid}（${customer?.name}）发送小程序名片：${reply.pagepath}`);
-        } else {
-          const content = renderTemplate(reply.content, customer);
-          await client.sendText({
-            externalUserId: msg.external_userid,
-            openKfid,
-            content,
-          });
-          customers.record({ externalUserId: msg.external_userid, direction: "out", text: content, ruleId: rule?.id ?? "" });
-          logger.info(`已向 ${msg.external_userid}（${customer?.name}）发送文本回复（${content.length} 字）`);
-        }
+        if (!data.has_more || cursor === previous) break;
       }
-
-      if (data.next_cursor) store.setCursor(openKfid, data.next_cursor);
     } catch (error) {
       logger.error(`处理客服事件失败：${error instanceof Error ? error.message : String(error)}`);
     }
@@ -152,9 +201,26 @@ export function createService({ config, rules, logger = console }) {
     });
   }
 
+  /** 常数时间比较：管理密钥不能用普通字符串相等判断，避免时序侧信道。 */
+  function secretMatches(provided) {
+    if (!config.adminSecret) return false;
+    const a = Buffer.from(String(provided ?? ""), "utf8");
+    const b = Buffer.from(config.adminSecret, "utf8");
+    return a.length === b.length && timingSafeEqual(a, b);
+  }
+
+  /**
+   * 管理接口鉴权：优先走 x-admin-secret 请求头（密钥不进 URL，
+   * 否则会落到浏览器历史与网关访问日志里）；同时兼容旧的 ?secret= 用法。
+   */
+  function adminAuthorized(req, url) {
+    const header = req.headers["x-admin-secret"];
+    const fromHeader = Array.isArray(header) ? header[0] : header;
+    return secretMatches(fromHeader) || secretMatches(url.searchParams.get("secret"));
+  }
+
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-
     if (url.pathname === "/health") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true, mock: config.mock, rules: rules.length }));
@@ -163,8 +229,7 @@ export function createService({ config, rules, logger = console }) {
 
     // 规则只读查看：方便客户排查「为什么没回复」，用 config.adminSecret 保护
     if (url.pathname === "/admin/rules") {
-      const secret = url.searchParams.get("secret") ?? "";
-      if (!config.adminSecret || secret !== config.adminSecret) {
+      if (!adminAuthorized(req, url)) {
         res.writeHead(403);
         res.end("forbidden");
         return;
@@ -177,15 +242,14 @@ export function createService({ config, rules, logger = console }) {
     // 控制台同步接口：把企微侧的客户档案与对话记录交给登录态的前端落库
     if (url.pathname === "/api/sync") {
       res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Headers", "content-type");
+      res.setHeader("Access-Control-Allow-Headers", "content-type, x-admin-secret");
       res.setHeader("Cache-Control", "no-store");
       if (req.method === "OPTIONS") {
         res.writeHead(204);
         res.end();
         return;
       }
-      const secret = url.searchParams.get("secret") ?? "";
-      if (!config.adminSecret || secret !== config.adminSecret) {
+      if (!adminAuthorized(req, url)) {
         res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
         res.end(JSON.stringify({ ok: false, error: "forbidden" }));
         return;
