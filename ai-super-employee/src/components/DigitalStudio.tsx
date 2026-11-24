@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardCopy, Download, Film, LoaderCircle, Mic, ScrollText, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
+import { ClipboardCopy, Download, Film, LoaderCircle, Mic, ScanSearch, ScrollText, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
 import {
   MEDIA_ROLES,
   canSetRole,
@@ -42,6 +42,18 @@ import {
   type DigitalJob,
   type DigitalProviderConfig,
 } from "../cloud/digitalhuman";
+import {
+  analyzeAll,
+  autoBindSegments,
+  loadAnalyses,
+  loadVisualConfig,
+  saveAnalyses,
+  saveVisualConfig,
+  suggestBindings,
+  type AssetAnalysis,
+  type BindingSuggestion,
+  type VisualConfig,
+} from "../cloud/mediaanalysis";
 
 const INDUSTRIES = ["餐饮", "美妆", "教育", "家居", "电商", "本地生活", "通用"];
 const DURATIONS = [15, 30, 60];
@@ -75,7 +87,7 @@ function formatTime(ts: number): string {
  * L3 TTS（火山/豆包）与 L4 数字人 API 为适配器后置，本模块保证结构可对接。
  */
 export function DigitalStudio() {
-  const [tab, setTab] = useState<"copy" | "plan" | "produce" | "roles">("copy");
+  const [tab, setTab] = useState<"copy" | "plan" | "produce" | "analysis" | "roles">("copy");
 
   // L1 文案工坊
   const [source, setSource] = useState<CopySource>("industry");
@@ -102,6 +114,11 @@ export function DigitalStudio() {
   const [provider, setProvider] = useState<DigitalProviderConfig>(() => loadDigitalProvider());
   const [jobs, setJobs] = useState<DigitalJob[]>(() => loadDigitalJobs());
   const [voiceNote, setVoiceNote] = useState("");
+
+  // 素材 AI 分析（启发式 + 视觉适配器）与话术对位
+  const [visualConfig, setVisualConfig] = useState<VisualConfig>(() => loadVisualConfig());
+  const [analyses, setAnalyses] = useState<AssetAnalysis[]>(() => loadAnalyses());
+  const [bindings, setBindings] = useState<BindingSuggestion[]>([]);
 
   // 素材角色
   const [assets, setAssets] = useState<MediaAsset[]>([]);
@@ -281,6 +298,64 @@ export function DigitalStudio() {
     saveDigitalJobs(next);
   };
 
+  /* --------------------------- 素材 AI 分析 / 话术对位 --------------------------- */
+  const runAnalyzeAll = async () => {
+    if (busy) return;
+    if (!assets.length) {
+      setError("素材库为空，先上传素材");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const rows = await analyzeAll(assets, visualConfig);
+      setAnalyses(saveAnalyses(loadAnalyses().filter((row) => !rows.some((next) => next.assetId === row.assetId)).concat(rows)));
+      const vision = rows.filter((row) => row.source === "vision").length;
+      notify(`已分析 ${rows.length} 个素材（${vision ? `视觉 ${vision} 个` : "启发式"}）`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "分析失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const adoptSuggestedRole = async (asset: MediaAsset, analysis: AssetAnalysis) => {
+    if (!analysis.suggestedRole) return;
+    await changeRole(asset, analysis.suggestedRole);
+  };
+
+  const runBindings = () => {
+    if (!plan) {
+      setError("先生成口播方案，再做话术对位");
+      return;
+    }
+    const groups = groupMedia(assets).map((group) => ({ name: group.name, assets: group.assets }));
+    const suggestions = suggestBindings(plan.segments, groups);
+    setBindings(suggestions);
+    if (!suggestions.length) notify("没有达到阈值的匹配（段落与素材组关键词无重合）");
+    else notify(`给出 ${suggestions.length} 条对位建议（只补空位，不覆盖已绑定）`);
+  };
+
+  const adoptBinding = (suggestion: BindingSuggestion) => {
+    if (!plan) return;
+    setPlan({
+      ...plan,
+      segments: plan.segments.map((segment) =>
+        segment.order === suggestion.order ? { ...segment, brollGroup: suggestion.group } : segment,
+      ),
+    });
+    setBindings((prev) => prev.filter((item) => item.order !== suggestion.order));
+    notify(`第 ${suggestion.order} 段已绑定「${suggestion.group}」（导出前记得重新导出 SRT/脚本）`);
+  };
+
+  const adoptAllBindings = () => {
+    if (!plan || !bindings.length) return;
+    const result = autoBindSegments(plan.segments, bindings);
+    setPlan({ ...plan, segments: result.segments });
+    setBindings([]);
+    notify(`已自动绑定 ${result.applied} 段、保留 ${result.kept} 段人工绑定`);
+  };
+
   /* --------------------------- 素材角色 --------------------------- */
   const changeRole = async (asset: MediaAsset, role: MediaRole | "") => {
     if (!canSetRole(role, confirmed[asset.id] ?? false)) {
@@ -320,6 +395,9 @@ export function DigitalStudio() {
           </button>
           <button type="button" className={tab === "produce" ? "active" : ""} onClick={() => setTab("produce")}>
             <Film size={15} />配音·出片
+          </button>
+          <button type="button" className={tab === "analysis" ? "active" : ""} onClick={() => setTab("analysis")}>
+            <ScanSearch size={15} />智能分析
           </button>
           <button type="button" className={tab === "roles" ? "active" : ""} onClick={() => setTab("roles")}>
             <ShieldCheck size={15} />素材角色
@@ -752,6 +830,146 @@ export function DigitalStudio() {
                       {job.mode} · {job.note || job.status} · {job.progress}%
                     </span>
                   </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------- 素材 AI 分析 / 话术对位 ------------------------- */}
+      {tab === "analysis" && (
+        <div className="digital-grid">
+          <div className="console-card office-form">
+            <div className="console-card-header">
+              <div>
+                <h2>
+                  <ScanSearch size={16} /> 素材分析
+                </h2>
+                <p>启发式零依赖（文件名/类型/时长→标签与角色建议）；视觉模型走 generic 适配器，Key 到位填地址即接。</p>
+              </div>
+            </div>
+            <label className="office-field">
+              <span>分析引擎</span>
+              <select
+                value={visualConfig.provider}
+                onChange={(event) => setVisualConfig({ ...visualConfig, provider: event.target.value as "heuristic" | "generic" })}
+              >
+                <option value="heuristic">heuristic（本机规则）</option>
+                <option value="generic">generic（视觉模型端点）</option>
+              </select>
+            </label>
+            {visualConfig.provider === "generic" && (
+              <>
+                <label className="office-field">
+                  <span>服务地址</span>
+                  <input
+                    value={visualConfig.baseUrl}
+                    onChange={(event) => setVisualConfig({ ...visualConfig, baseUrl: event.target.value })}
+                    placeholder="https://vision.example.com"
+                  />
+                </label>
+                <label className="office-field">
+                  <span>路径</span>
+                  <input value={visualConfig.path} onChange={(event) => setVisualConfig({ ...visualConfig, path: event.target.value })} />
+                </label>
+              </>
+            )}
+            <div className="digital-exports">
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => {
+                  saveVisualConfig(visualConfig);
+                  notify("视觉分析配置已存本机");
+                }}
+              >
+                保存配置
+              </button>
+              <button type="button" className="button button-primary" disabled={busy || !assets.length} onClick={() => void runAnalyzeAll()}>
+                {busy ? <LoaderCircle size={15} className="spin" /> : <ScanSearch size={15} />}分析全部素材（{assets.length}）
+              </button>
+            </div>
+
+            <ul className="digital-role-list">
+              {analyses.filter((row) => assets.some((asset) => asset.id === row.assetId)).length === 0 && (
+                <li>
+                  <span className="digital-empty-hint">还没有分析结果，点上方按钮开始（结果留档本机）</span>
+                </li>
+              )}
+              {analyses
+                .filter((row) => assets.some((asset) => asset.id === row.assetId))
+                .map((row) => {
+                  const asset = assets.find((item) => item.id === row.assetId);
+                  if (!asset) return null;
+                  return (
+                    <li key={row.assetId}>
+                      <div className="digital-role-info">
+                        <strong>{asset.name}</strong>
+                        <span>
+                          {row.source === "vision" ? "👁 视觉识别" : "规则启发"} · 建议「
+                          {row.suggestedRole === "avatar" ? "形象" : row.suggestedRole === "voice" ? "声音" : "分镜"}」· {row.roleReason}
+                        </span>
+                        <span>{row.note}</span>
+                        <span className="analysis-tags">
+                          {row.tags.map((tag) => (
+                            <b key={tag}>{tag}</b>
+                          ))}
+                        </span>
+                      </div>
+                      <div className="digital-role-actions">
+                        <button
+                          type="button"
+                          className="button button-secondary"
+                          disabled={!row.suggestedRole || asset.role === row.suggestedRole}
+                          onClick={() => void adoptSuggestedRole(asset, row)}
+                        >
+                          {asset.role === row.suggestedRole ? "已按建议标注" : "采纳建议"}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+            </ul>
+          </div>
+
+          <div className="console-card office-form">
+            <div className="console-card-header">
+              <div>
+                <h2>
+                  <Sparkles size={16} /> 话术自动对位
+                </h2>
+                <p>按段落台词与素材组的关键词重合度给 brollGroup 建议——只补空位，不覆盖已绑定。</p>
+              </div>
+            </div>
+            <div className="digital-exports">
+              <button type="button" className="button button-primary" disabled={!plan} onClick={runBindings}>
+                <Sparkles size={15} />按当前方案对位
+              </button>
+              {bindings.length > 0 && (
+                <button type="button" className="button button-secondary" onClick={adoptAllBindings}>
+                  全部采纳（{bindings.length}）
+                </button>
+              )}
+            </div>
+            {!plan && <p className="digital-empty-hint">先到「口播方案」生成方案</p>}
+            {plan && bindings.length === 0 && (
+              <p className="digital-empty-hint">点「按当前方案对位」分析 {plan.segments.length} 段台词与 {groupMedia(assets).length} 个素材组</p>
+            )}
+            <ul className="digital-drafts">
+              {bindings.map((item) => (
+                <li key={item.order}>
+                  <span className="digital-draft-index">{item.order}</span>
+                  <p>
+                    「{item.segmentText}…」→ <strong>{item.group}</strong>
+                    <br />
+                    <span className="digital-empty-hint">
+                      得分 {item.score} · {item.reason}
+                    </span>
+                  </p>
+                  <button type="button" className="button button-secondary" onClick={() => adoptBinding(item)}>
+                    采纳
+                  </button>
                 </li>
               ))}
             </ul>
