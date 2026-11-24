@@ -32,11 +32,13 @@ import {
   LogIn,
   Megaphone,
   Menu,
+  Map as MapIcon,
   ImagePlus,
   MessageSquareText,
   Palette,
   Pencil,
   Plug,
+  Presentation,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -63,6 +65,8 @@ import { CommandInbox } from "./CommandInbox";
 import { MixStudio } from "./MixStudio";
 import { PipelineCenter } from "./PipelineCenter";
 import { OpsReportCard } from "./OpsReportCard";
+import { OfficeStudio } from "./OfficeStudio";
+import { MapLeads } from "./MapLeads";
 import { PublishHub } from "./PublishHub";
 import {
   clearArtworks,
@@ -155,6 +159,7 @@ const navItems = [
   { label: "内容工厂", icon: FileText },
   { label: "聚合发布", icon: Megaphone },
   { label: "线索与客户", icon: Users },
+  { label: "地图获客", icon: MapIcon },
   { label: "企业知识库", icon: BookOpen },
   { label: "企微私域", icon: MessageSquareText },
   { label: "GEO 工作台", icon: Globe2 },
@@ -162,6 +167,7 @@ const navItems = [
   { label: "AI 创作", icon: Palette },
   { label: "视频创作", icon: Clapperboard },
   { label: "混剪工坊", icon: Scissors },
+  { label: "AI 办公", icon: Presentation },
   { label: "模型接入", icon: Plug },
 ];
 
@@ -1773,6 +1779,10 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
             </section>
           )}
 
+          {activeNav === "地图获客" && (
+            <MapLeads ownerName={user?.name || "AI 跟进"} existingNames={leads.map((lead) => lead.name)} onCreated={(lead) => setLeads((current) => [lead, ...current])} />
+          )}
+
           {activeNav === "企业知识库" && (
             <section className="knowledge-layout">
               <div className="console-card knowledge-summary">
@@ -1977,6 +1987,8 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
           {activeNav === "混剪工坊" && (
             <MixStudio />
           )}
+
+          {activeNav === "AI 办公" && <OfficeStudio />}
 
           {activeNav === "模型接入" && (
             <section className="channel-grid">
