@@ -16,7 +16,8 @@
     "test:analysis": "tsx scripts/analysis-check.ts",
     "test:style": "tsx scripts/style-check.ts",
     "test:ops": "tsx scripts/ops-check.ts",
-    "verify:c": "node scripts/c-group-verify.mjs"
+    "verify:c": "node scripts/c-group-verify.mjs",
+    "test:ops2": "tsx scripts/ops2-check.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

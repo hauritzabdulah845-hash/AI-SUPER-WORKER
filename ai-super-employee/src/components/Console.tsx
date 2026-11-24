@@ -72,6 +72,8 @@ import { OfficeStudio } from "./OfficeStudio";
 import { MapLeads } from "./MapLeads";
 import { BroadcastCenter } from "./BroadcastCenter";
 import { ServiceChannels } from "./ServiceChannels";
+import { KnowledgeList } from "./KnowledgeList";
+import { UsagePanel } from "./UsagePanel";
 import { DigitalStudio } from "./DigitalStudio";
 import { PublishHub } from "./PublishHub";
 import {
@@ -249,6 +251,8 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
   const [templateDomain, setTemplateDomain] = useState("全部");
   const [templateQuery, setTemplateQuery] = useState("");
   const [contentAgent, setContentAgent] = useState("全部");
+  /** 「去发布」预选的产出（`标题-创建时间`），传给聚合发布页 */
+  const [publishSource, setPublishSource] = useState("");
   const [contentDetail, setContentDetail] = useState<{ title: string; agent: string; output: string; created_at: string; taskId: number | null; stepIndex: number; demo: boolean } | null>(null);
   const [agentEditing, setAgentEditing] = useState<{ id: number; name: string } | null>(null);
   // 人设编辑：baseline 是官方默认提示词，prompt 是正在编辑的内容。
@@ -1868,7 +1872,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
           )}
 
           {activeNav === "聚合发布" && (
-            <PublishHub contents={contentOutputs} />
+            <PublishHub contents={contentOutputs} initialSourceId={publishSource} onSourceConsumed={() => setPublishSource("")} />
           )}
 
           {activeNav === "线索与客户" && (
@@ -1961,7 +1965,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                 )}
                 {(kbProgress || kbResult) && <p className="knowledge-progress">{kbProgress || kbResult}</p>}
               </div>
-              <div className="console-card knowledge-list"><div className="console-card-header"><div><h2>最近更新</h2><p>点击查看全文，智能体会按权限调用这些知识</p></div></div>{knowledge.length === 0 && <div className="empty-search"><BookOpen size={24} /><strong>知识库还是空的</strong><span>选择本地文件夹批量导入，或手动录入产品手册、价格表</span></div>}{knowledge.map((doc) => <button type="button" className="knowledge-doc" key={doc.id} onClick={() => openKnowledgeDoc(doc)}><div><FileText size={19} /></div><span><strong>{doc.title}</strong><small>{doc.doc_type} · {doc.chunks} 个知识片段</small></span><time>{new Date(doc.created_at).toLocaleDateString("zh-CN")}</time><CheckCircle2 size={17} /></button>)}</div>
+              <KnowledgeList docs={knowledge} onOpen={openKnowledgeDoc} />
 
               {kbScan && (
                 <div className="console-card kb-import-panel">
@@ -2146,6 +2150,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
           {activeNav === "AI 办公" && <OfficeStudio />}
 
           {activeNav === "模型接入" && (
+            <>
             <section className="channel-grid">
               <div className="console-card channel-card">
                 <div className="console-card-header">
@@ -2214,6 +2219,8 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                 </ul>
               </div>
             </section>
+              <UsagePanel />
+            </>
           )}
 
           {activeNav === "AI 创作" && (
@@ -2509,6 +2516,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
             <pre className="doc-content">{contentDetail.output}</pre>
             <div className="form-actions">
               <button type="button" className="button button-primary" onClick={() => copyText(contentDetail.output, "内容已复制，可直接粘贴使用")}><ClipboardCopy size={14} />复制全文</button>
+              <button type="button" className="button button-secondary" onClick={() => { setPublishSource(`${contentDetail.title}-${contentDetail.created_at}`); setContentDetail(null); setActiveNav("聚合发布"); }}><Megaphone size={14} />去发布</button>
               <button type="button" className="button button-secondary" onClick={() => { setContentDetail(null); setShowComposer(true); }}><RotateCcw size={14} />基于此再生成</button>
               {contentDetail.demo && (
                 <button type="button" className="button button-ghost danger-button" onClick={() => removeContentOutput(contentDetail)}><Trash2 size={14} />移除产出</button>
