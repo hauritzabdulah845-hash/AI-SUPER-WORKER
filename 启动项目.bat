@@ -9,9 +9,9 @@ echo   Project: %CD%
 echo ============================================
 echo.
 
-rem ---------- locate npm: system PATH first, then known install locations ----------
+rem ---------- locate npm.cmd as a FULL PATH (bare names break "call" resolution) ----------
 set "NPM_CMD="
-where npm >nul 2>nul && set "NPM_CMD=npm"
+for /f "delims=" %%F in ('where npm.cmd 2^>nul') do if not defined NPM_CMD set "NPM_CMD=%%F"
 
 if not defined NPM_CMD (
   for /d %%D in ("%USERPROFILE%\.workbuddy\binaries\node\versions\*") do (
@@ -31,7 +31,7 @@ if not defined NPM_CMD (
 rem ---------- put node into this session's PATH so vite and scripts can find it ----------
 for %%F in ("%NPM_CMD%") do set "NODE_DIR=%%~dpF"
 set "PATH=%NODE_DIR%;%PATH%"
-echo [Node] %NODE_DIR%
+echo [Node] %NPM_CMD%
 
 if not exist "node_modules" (
   echo [Setup] node_modules not found, installing dependencies...
@@ -50,7 +50,8 @@ echo         Browser will open at http://localhost:5173/
 echo         Press Ctrl+C in this window to stop the server.
 echo.
 
-start "" cmd /c "timeout /t 6 /nobreak >nul & start "" http://localhost:5173/"
+rem ---------- wait for the dev server to be ready, then open the browser ----------
+start "" powershell -NoProfile -WindowStyle Hidden -Command "for($i=0;$i -lt 60;$i++){try{$r=Invoke-WebRequest -Uri 'http://127.0.0.1:5173/' -UseBasicParsing -TimeoutSec 2;if($r.StatusCode -eq 200){Start-Process 'http://localhost:5173/';break}}catch{Start-Sleep -Seconds 1}}"
 
 call "%NPM_CMD%" run dev -- --host 127.0.0.1 --port 5173
 
