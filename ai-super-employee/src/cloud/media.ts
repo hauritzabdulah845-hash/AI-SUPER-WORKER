@@ -9,6 +9,15 @@
 
 export type MediaKind = "video" | "image" | "audio";
 
+/** 素材角色（横切标注，与场景组正交）：形象/声音用于数字人工坊，broll=分镜副画面。 */
+export type MediaRole = "avatar" | "voice" | "broll";
+
+export const MEDIA_ROLES: { value: MediaRole; label: string }[] = [
+  { value: "avatar", label: "形象" },
+  { value: "voice", label: "声音" },
+  { value: "broll", label: "分镜素材" },
+];
+
 export interface MediaAsset {
   id: string;
   /** 文件名（不含扩展名） */
@@ -16,6 +25,8 @@ export interface MediaAsset {
   /** 场景/镜头组，未归类时为「未分组」 */
   group: string;
   kind: MediaKind;
+  /** 数字人工坊角色标注；老数据无此字段 = 普通分镜素材 */
+  role?: MediaRole;
   mime: string;
   size: number;
   blob: Blob;
@@ -171,7 +182,7 @@ export async function removeMedia(id: string): Promise<void> {
 }
 
 /** 改分组 / 改备注（合并到一次写入）。 */
-export async function updateMedia(id: string, patch: Partial<Pick<MediaAsset, "group" | "note" | "name">>): Promise<void> {
+export async function updateMedia(id: string, patch: Partial<Pick<MediaAsset, "group" | "note" | "name" | "role">>): Promise<void> {
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(DB_STORE, "readwrite");
@@ -212,4 +223,22 @@ export function groupMedia(assets: MediaAsset[]): MediaGroup[] {
 export function formatSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
   return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+}
+
+/* ------------------------------------------------------------------ */
+/* 角色标注（数字人工坊）                                                */
+/* ------------------------------------------------------------------ */
+
+export function listByRole(assets: MediaAsset[], role: MediaRole): MediaAsset[] {
+  return assets.filter((asset) => asset.role === role);
+}
+
+/**
+ * 角色门禁：形象/声音必须先勾选肖像与音色授权才能设置；
+ * broll（分镜素材）不需要授权确认。
+ */
+export function canSetRole(role: MediaRole | "", licenseConfirmed: boolean): boolean {
+  if (!role) return true;
+  if (role === "avatar" || role === "voice") return licenseConfirmed;
+  return true;
 }

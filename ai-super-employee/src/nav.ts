@@ -18,6 +18,7 @@ export const NAV_SLUGS: Record<string, string> = {
   数据洞察: "insights",
   视频创作: "video",
   混剪工坊: "mixcut",
+  数字人工坊: "digital",
   "AI 办公": "office",
   "AI 创作": "studio",
   模型接入: "channels",

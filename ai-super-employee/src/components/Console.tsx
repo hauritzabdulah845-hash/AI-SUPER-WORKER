@@ -31,6 +31,7 @@ import {
   LoaderCircle,
   LogIn,
   Megaphone,
+  Mic,
   Menu,
   Map as MapIcon,
   ImagePlus,
@@ -70,6 +71,7 @@ import { OfficeStudio } from "./OfficeStudio";
 import { MapLeads } from "./MapLeads";
 import { BroadcastCenter } from "./BroadcastCenter";
 import { ServiceChannels } from "./ServiceChannels";
+import { DigitalStudio } from "./DigitalStudio";
 import { PublishHub } from "./PublishHub";
 import {
   clearArtworks,
@@ -172,6 +174,7 @@ const navItems = [
   { label: "AI 创作", icon: Palette },
   { label: "视频创作", icon: Clapperboard },
   { label: "混剪工坊", icon: Scissors },
+  { label: "数字人工坊", icon: Mic },
   { label: "AI 办公", icon: Presentation },
   { label: "模型接入", icon: Plug },
 ];
@@ -1998,6 +2001,8 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
           {activeNav === "混剪工坊" && (
             <MixStudio />
           )}
+
+          {activeNav === "数字人工坊" && <DigitalStudio />}
 
           {activeNav === "AI 办公" && <OfficeStudio />}
 
