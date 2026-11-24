@@ -11,9 +11,9 @@ rem 副画面（按段切入）：5.0s-13.0s 分镜1.png
 ffmpeg -y ^
   -stream_loop -1 -i "口播-正面.mp4" ^
   -i "配音.wav" ^
-  -loop 1 -i "分镜1.png"
-  -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[bg];[bg][2:v]overlay=enable='between(t,5.00,13.00)'[o1];[o1]subtitles=sub.srt:force_style='FontName=Microsoft YaHei,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=1'[vout]" ^
-  -map "[vout]" -map 1:a -c:a copy -shortest "digital-out.mp4"
+  -loop 1 -i "分镜1.png" ^
+  -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[bg];[bg][2:v]overlay=enable='between(t,5.00,13.00)'[o1];[o1]subtitles=sub.srt:fontsdir=fonts:force_style='FontName=Noto Sans SC Thin Thin,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=1'[vout]" ^
+  -map "[vout]" -map 1:a -c:a aac -b:a 192k -shortest "digital-out.mp4"
 
 rem 输出：digital-out.mp4；如缺字幕样式字体，改 sub.srt 同名字体名
 endlocal

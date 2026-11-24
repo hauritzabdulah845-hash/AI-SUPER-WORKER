@@ -117,6 +117,21 @@ const mkAsset = (patch: Partial<MediaAsset> & { id: string; name: string }): Med
   check("脚本含循环形象与配音映射", recipe.script.includes("-stream_loop -1") && recipe.script.includes('"配音.wav"') && recipe.script.includes("-map 1:a"));
   check("脚本烧录 sub.srt", recipe.script.includes("subtitles=sub.srt"));
   check("脚本含副画面 overlay 时间窗", recipe.script.includes("overlay=enable='between(t,") && recipe.overlays === 1, `overlays=${recipe.overlays}`);
+
+  // 结构性校验：验收时发现「带分镜图时输入行缺续行符，ffmpeg 命令被截断成两条」。
+  // 逐条 shell 逻辑行检查——凡是后面还有 ffmpeg 参数的物理行，都必须以续行符结尾。
+  const logicalLines = (script: string) => {
+    const physical = script.split("\n");
+    const start = physical.findIndex((line) => line.startsWith("ffmpeg "));
+    const end = physical.findIndex((line, index) => index > start && line.includes("digital-out.mp4") && !line.trim().startsWith("#"));
+    const commandLines = physical.slice(start, end + 1).filter((line) => line.trim() !== "");
+    return { commandLines, last: commandLines[commandLines.length - 1] ?? "" };
+  };
+  const shParts = logicalLines(recipe.script);
+  // bat 的续行符是「空格+^」，trimEnd 会把空格吃掉，故两种结尾都要认
+  const truncated = shParts.commandLines.slice(0, -1).filter((line) => !line.trimEnd().endsWith("\\") && !line.endsWith("^"));
+  check("sh: ffmpeg 命令每行都正确续行（含末个输入）", truncated.length === 0, truncated.length ? `未续行: ${truncated.map((l) => l.trim().slice(0, 40)).join(" | ")}` : `共 ${shParts.commandLines.length} 行`);
+  check("sh: 命令末行是输出映射行", shParts.last.includes("digital-out.mp4"));
   check("无图组的绑定段记入 skipped", recipe.skipped === 1, `skipped=${recipe.skipped}`);
   check("脚本 cd 到脚本目录", recipe.script.includes('cd "$(dirname "$0")"'));
   check("脚本 set -euo pipefail", recipe.script.includes("set -euo pipefail"));
@@ -124,6 +139,26 @@ const mkAsset = (patch: Partial<MediaAsset> & { id: string; name: string }): Med
   // 8. bat 变体
   const bat = buildDigitalRecipe(planBound, assets, { shell: "bat" });
   check("bat 用 ^ 续行与 %~dp0", bat.script.includes("@echo off") && bat.script.includes("^") && bat.script.includes("%~dp0"));
+
+  // 11. 音频编码：mp4 容不下 pcm(wav)，无损配音必须转 AAC（验收实测踩过）
+  check("wav 配音转 AAC", recipe.script.includes("-c:a aac") && !recipe.script.includes("-c:a copy"), "wav 直拷进 mp4 会报 codec not supported");
+  const mp3Assets = assets.map((item) => (item.name === "配音.wav" ? { ...item, name: "配音.mp3" } : item));
+  const mp3Recipe = buildDigitalRecipe(planBound, mp3Assets, { shell: "sh" });
+  check("mp3 配音可 copy", mp3Recipe.script.includes("-c:a copy"));
+
+  // 12. 字幕字体：libass 只认单一字体名（逗号候选实测无效），fontName/fontDir 要落进滤镜
+  check("默认字体单一名称", recipe.script.includes("FontName=Microsoft YaHei,FontSize=") && !recipe.script.includes("Microsoft YaHei,PingFang"), "逗号候选列表 libass 不认");
+  const fontRecipe = buildDigitalRecipe(planBound, assets, { shell: "sh", fontName: "Noto Sans SC", fontDir: "fonts" });
+  check("自定义字体与 fontsdir 生效", fontRecipe.script.includes("FontName=Noto Sans SC,FontSize=") && fontRecipe.script.includes(":fontsdir=fonts:"));
+  const plainFontRecipe = buildDigitalRecipe(planBound, assets, { shell: "sh" });
+  // 注意：脚本尾部提示语里会出现 fontsdir=fonts 字样，只检查滤镜行本身
+  const filterLine = (script: string) => script.split("\n").find((line) => line.includes("subtitles=sub.srt")) ?? "";
+  check("无 fontDir 时滤镜不带 fontsdir", !filterLine(plainFontRecipe.script).includes("fontsdir="), filterLine(plainFontRecipe.script).slice(0, 60));
+  check("有 fontDir 时滤镜带 fontsdir", filterLine(fontRecipe.script).includes(":fontsdir=fonts:"));
+  check("脚本提示中文豆腐块的处理办法", fontRecipe.script.includes("fonts/") || fontRecipe.script.includes("PingFang SC"));
+  const batParts = logicalLines(bat.script);
+  const batTruncated = batParts.commandLines.slice(0, -1).filter((line) => !line.endsWith("^"));
+  check("bat: ffmpeg 命令每行都正确续行（含末个输入）", batTruncated.length === 0, batTruncated.length ? batTruncated.map((l) => l.trim().slice(0, 36)).join(" | ") : `共 ${batParts.commandLines.length} 行`);
 
   // 9. 无形象 → 分镜粗拼
   const noAvatar = assets.filter((item) => item.role !== "avatar");

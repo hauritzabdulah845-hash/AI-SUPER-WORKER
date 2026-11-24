@@ -276,9 +276,10 @@ export function buildFfmpegRecipe(
       lines.push(`${isBat ? "rem" : "#"} 镜头${index + 1} ← ${item.asset.group}/${item.asset.name}`);
     });
     lines.push(`ffmpeg -y${cont}`);
-    usable.forEach((item, index) => {
+    // 每个输入行都必须续行：后面紧跟 -filter_complex，末项不加 cont 会把命令截断成两条
+    usable.forEach((item) => {
       const input = item.asset.name.replace(/"/g, "");
-      lines.push(`  -i "${input}"${index === usable.length - 1 ? "" : cont}`);
+      lines.push(`  -i "${input}"${cont}`);
     });
 
     const filterParts: string[] = [];

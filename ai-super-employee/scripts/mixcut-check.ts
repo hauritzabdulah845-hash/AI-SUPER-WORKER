@@ -82,5 +82,20 @@ const md = planMarkdown(
 );
 check("Markdown 含分镜表与降级标记", md.includes("| # | 素材组 |") && md.includes("模板降级产出") && md.includes("版本B"));
 
+  // 结构性校验（与 digital-check 同源）：ffmpeg 逻辑行若后面还有参数，必须以续行符结尾
+  const checkScript = (label: string, script: string) => {
+    const physical = script.split("\n");
+    const start = physical.findIndex((line) => line.startsWith("ffmpeg "));
+    if (start < 0) return check(`${label}: 含 ffmpeg 命令`, false);
+    const end = physical.findIndex((line, index) => index > start && /\.mp4"\s*$/.test(line) && !line.trim().startsWith("#") && !line.trim().startsWith("rem"));
+    const commandLines = physical.slice(start, end + 1).filter((line) => line.trim() !== "");
+    // bat 的续行符是「空格+^」，trimEnd 会把空格吃掉，故两种结尾都要认
+    const truncated = commandLines.slice(0, -1).filter((line) => !line.trimEnd().endsWith("\\") && !line.endsWith("^"));
+    check(`${label}: 每行正确续行（含末个输入）`, truncated.length === 0, truncated.length ? truncated.map((l) => l.trim().slice(0, 36)).join(" | ") : `${commandLines.length} 行`);
+  };
+
+  checkScript("混剪 sh", recipe.script);
+  checkScript("混剪 bat", bat.script);
+
 console.log(`\n${failed === 0 ? "全部通过" : `${failed} 项失败`}`);
 process.exit(failed === 0 ? 0 : 1);
