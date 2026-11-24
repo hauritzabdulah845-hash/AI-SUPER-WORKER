@@ -6028,10 +6028,23 @@ button.console-search:hover { border-color: #8a78e4; }
 /* 详情弹窗：旧版字号只有 9px，实测几乎读不清，这里整体提到可读区间 */
 .task-detail-modal {
   width: min(760px, 100%);
-  max-height: 86vh;
+  max-height: min(86vh, 880px);
   display: flex;
   flex-direction: column;
   padding: 30px 30px 24px;
+  /* 兜底：若浏览器不支持上面的 flex 收缩链，整体仍可滚，不会把按钮裁死 */
+  overflow-y: auto;
+}
+
+/* 头部信息块固定高度，不参与收缩（只有步骤区滚动） */
+.task-detail-modal > .panel-kicker,
+.task-detail-modal > .task-detail-title,
+.task-detail-modal > .task-detail-goal,
+.task-detail-modal > .task-detail-meta,
+.task-detail-modal > .task-detail-actions,
+.task-detail-modal > .task-summary-block,
+.task-detail-modal > .task-error-note {
+  flex: 0 0 auto;
 }
 
 .task-detail-modal .task-detail-title {
@@ -6043,6 +6056,8 @@ button.console-search:hover { border-color: #8a78e4; }
 }
 
 .task-detail-modal .task-detail-goal {
+  max-height: 4.8em;
+  overflow-y: auto;
   margin: 0;
   color: #6b6478;
   font-size: 13px;
@@ -6085,6 +6100,8 @@ button.console-search:hover { border-color: #8a78e4; }
 }
 
 .task-summary-block {
+  max-height: 9em;
+  overflow-y: auto;
   margin: 0 0 16px;
   padding: 14px 16px;
   border-radius: 12px;
@@ -6128,6 +6145,9 @@ button.console-search:hover { border-color: #8a78e4; }
   overflow-y: auto;
   padding-right: 4px;
   flex: 1 1 auto;
+  /* 缺这行时 grid 子项按内容撑高，overflow 不生效 → 底部内容被裁且无法滚动 */
+  min-height: 0;
+  overscroll-behavior: contain;
 }
 
 .task-detail-modal .task-detail-step {
@@ -8947,4 +8967,68 @@ button.console-search:hover { border-color: #8a78e4; }
 .console-nav-group .console-nav-label {
   margin: 6px 10px 4px;
   padding-top: 6px;
+}
+
+/* ============================================================================
+   通用防线：弹窗 / 滚动容器在窄屏和长内容下不得裁死操作按钮
+   ----------------------------------------------------------------------------
+   背景：侧栏曾因「flex 子项缺 min-height:0 + 无 overflow」导致内容不可达；
+   任务详情弹窗同一根因（按钮在长步骤列表上方被挤出可视区）。与其逐个补，
+   不如在此集中兜底 —— 新加弹窗自动继承。
+   ============================================================================ */
+
+/* 1) 所有弹窗容器：内容超高时整体可滚（最低兜底，优先级最低靠 !important 保证生效） */
+.composer-modal,
+.persona-modal,
+.doc-modal {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 2) flex 纵向弹窗内的滚动子项：必须能收缩，否则 overflow 形同虚设 */
+.composer-modal > [class*="steps"],
+.composer-modal > [class*="list"],
+.composer-modal > [class*="content"],
+.persona-modal > [class*="list"],
+.doc-modal > [class*="content"] {
+  min-height: 0;
+}
+
+/* 3) 弹窗顶/底操作条吸附：长内容滚动时按钮始终可达 */
+.task-detail-modal > .task-detail-actions {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 10px 0;
+  margin-top: -10px;
+  background: #fff;
+  border-bottom: 1px solid rgba(20, 14, 44, .06);
+}
+
+/* 4) 窄屏：弹窗占满可用高度，避免被浏览器地址栏挤掉底部 */
+@media (max-width: 640px) {
+  .composer-modal,
+  .persona-modal,
+  .doc-modal,
+  .task-detail-modal {
+    max-height: calc(100dvh - 24px);
+  }
+}
+
+/* 5) 移动端所有横向可滚区域：隐藏滚动条但仍可滑（375px 表格已在别处处理） */
+@media (max-width: 640px) {
+  .modal-backdrop { padding: 10px; }
+  .task-detail-modal { padding: 20px 16px 16px; }
+  .task-detail-modal .task-detail-actions .button { padding: 8px 12px; font-size: 12.5px; }
+}
+
+/* .doc-modal 之前只有 > 子选择器兜底，缺基础规则：补上，与其它弹窗一致 */
+.doc-modal {
+  width: min(680px, 100%);
+  max-height: min(86vh, 860px);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }

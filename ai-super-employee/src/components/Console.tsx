@@ -59,6 +59,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { useModalBehavior } from "@/hooks/use-modal-behavior";
 import CommandDemo from "./CommandDemo";
 import { KfSyncCard } from "./KfSyncCard";
 import { WecomGuide } from "./WecomGuide";
@@ -317,6 +318,21 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
   const [kbProgress, setKbProgress] = useState("");
   const [kbResult, setKbResult] = useState("");
   const [kbOnlySupported, setKbOnlySupported] = useState(true);
+
+  // 弹窗通用行为：Esc 关闭 / 锁定背景滚动 / 关闭后还原焦点。
+  // 12 个弹窗统一走这一个 hook —— 逐个手写必然漏，嵌套时滚动锁计数也容易错。
+  useModalBehavior(Boolean(selectedTask), () => setSelectedTask(null));
+  useModalBehavior(Boolean(showComposer), () => setShowComposer(false));
+  useModalBehavior(Boolean(showLogin), () => setShowLogin(false));
+  useModalBehavior(Boolean(showPalette), () => setShowPalette(false));
+  useModalBehavior(Boolean(showLeadForm), () => setShowLeadForm(false));
+  useModalBehavior(Boolean(showKnowledgeForm), () => setShowKnowledgeForm(false));
+  useModalBehavior(Boolean(docDetail), () => setDocDetail(null));
+  useModalBehavior(Boolean(contentDetail), () => setContentDetail(null));
+  useModalBehavior(Boolean(agentEditing), () => setAgentEditing(null));
+  useModalBehavior(Boolean(personaEditing), () => setPersonaEditing(null));
+  useModalBehavior(Boolean(showWecomForm), () => setShowWecomForm(false));
+  useModalBehavior(Boolean(followUpLead), () => setFollowUpLead(null));
 
   // ---------- AI 创作 ----------
   const studioChannel = imageChannelStatus();
@@ -2494,7 +2510,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                 value={paletteQuery}
                 onChange={(event) => setPaletteQuery(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Escape") setShowPalette(false);
+                  // Esc 交给 useModalBehavior 统一处理（document 捕获阶段），此处不重复
                   if (event.key === "Enter" && paletteItems.length > 0) { paletteItems[0].run(); setShowPalette(false); }
                 }}
               />
@@ -2721,7 +2737,20 @@ function TaskTable({ tasks, onOpen, onRerun, onDelete }: { tasks: AnyTask[]; onO
   return (
     <div className="task-list">
       {tasks.map((task) => (
-        <div className="task-row" key={task.id} role="button" tabIndex={0} onClick={() => onOpen(task)} onKeyDown={(event) => { if (event.key === "Enter") onOpen(task); }}>
+        <div
+          className="task-row"
+          key={task.id}
+          role="button"
+          tabIndex={0}
+          onClick={() => onOpen(task)}
+          onKeyDown={(event) => {
+            // WAI-ARIA：role="button" 需同时响应 Enter 与 Space
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onOpen(task);
+            }
+          }}
+        >
           <div className={`task-status-dot ${task.status === "done" ? "done" : task.status === "failed" ? "failed" : task.status === "partial" ? "partial" : "running"}`}>
             {task.status === "done" ? <Check size={14} /> : task.status === "failed" ? <CircleDot size={14} /> : task.status === "partial" ? <Clock3 size={14} /> : <Activity size={14} />}
           </div>
