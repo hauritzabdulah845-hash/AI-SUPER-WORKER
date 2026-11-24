@@ -8810,3 +8810,51 @@ button.console-search:hover { border-color: #8a78e4; }
 }
 .lead-csv-panel .form-actions { display: flex; gap: 10px; }
 .lead-csv-panel label.button { cursor: pointer; }
+
+/* ------------------- 第十四批：知识库检索 / 配额统计 ------------------- */
+.knowledge-search {
+  display: flex; align-items: center; gap: 6px; padding: 5px 10px;
+  border: 1px solid var(--line); border-radius: 999px; background: #fff; min-width: 220px;
+}
+.knowledge-search input { border: none; outline: none; font-size: 13px; width: 100%; background: transparent; }
+.kb-hit-badge {
+  font-style: normal; margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+  background: rgba(124, 77, 255, 0.12); color: var(--purple-dark); font-size: 10px; font-weight: 700;
+}
+.kb-snippet { display: block; margin-top: 3px; color: var(--muted-ink); font-size: 11px; line-height: 1.5; }
+.kb-pager {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 4px 2px; font-size: 12px; color: var(--muted-ink);
+}
+.kb-pager .text-link:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.usage-panel { grid-column: 1 / -1; }
+.usage-alerts { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.usage-alerts li {
+  display: flex; align-items: center; gap: 7px; font-size: 12.5px;
+  padding: 8px 11px; border-radius: 9px;
+}
+.usage-alerts li.danger { background: rgba(239, 68, 68, 0.1); color: #b91c1c; }
+.usage-alerts li.warn { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+.usage-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+.usage-metrics div {
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 2px; background: #fff;
+}
+.usage-metrics div.warn { border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.05); }
+.usage-metrics strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+.usage-metrics span { font-size: 11.5px; color: var(--muted-ink); }
+.usage-trend { margin-bottom: 12px; }
+.usage-trend > span { font-size: 11.5px; color: var(--muted-ink); }
+.usage-bars { display: flex; align-items: flex-end; gap: 3px; height: 40px; margin-top: 5px; }
+.usage-bars i { flex: 1; border-radius: 3px 3px 1px 1px; background: rgba(120, 113, 108, 0.16); display: block; }
+.usage-bars i.has { background: linear-gradient(180deg, #7c4dff, #4d7cff); }
+.usage-models { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font-size: 12.5px; }
+.usage-models li {
+  display: flex; align-items: center; gap: 12px; padding: 6px 2px;
+  border-bottom: 1px dashed var(--line); color: var(--muted-ink);
+}
+.usage-models .usage-model-name { flex: 1; color: var(--ink); font-weight: 600; }
+.usage-models em { font-style: normal; color: #b91c1c; font-weight: 600; }
+.usage-empty { color: var(--muted-ink); padding: 8px 2px !important; }
+.usage-channels { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-ink); margin-top: 8px; }

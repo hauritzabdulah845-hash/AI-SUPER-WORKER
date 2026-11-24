@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Check,
   Copy,
@@ -19,6 +19,10 @@ export interface PublishSource {
 
 interface PublishHubProps {
   contents: PublishSource[];
+  /** 从内容工厂「去发布」带过来的预选产出（`标题-创建时间`） */
+  initialSourceId?: string;
+  /** 已消费预选值，通知父级清空 */
+  onSourceConsumed?: () => void;
 }
 
 function downloadMarkdown(filename: string, content: string) {
@@ -54,8 +58,10 @@ const DEFAULT_PLATFORMS = ["抖音", "小红书", "视频号"];
  * 聚合发布（半自动）：AI 负责各平台适配稿与发布清单，人工负责上传与点击发布。
  * 不碰任何平台的非官方接口——自动分发需要各平台开放平台授权，属于后续路线图。
  */
-export function PublishHub({ contents }: PublishHubProps) {
-  const [sourceId, setSourceId] = useState<string>("custom");
+export function PublishHub({ contents, initialSourceId = "", onSourceConsumed }: PublishHubProps) {
+  const [sourceId, setSourceId] = useState<string>(() =>
+    initialSourceId && contents.some((item) => `${item.title}-${item.created_at}` === initialSourceId) ? initialSourceId : "custom",
+  );
   const [customText, setCustomText] = useState("");
   const [platforms, setPlatforms] = useState<string[]>(DEFAULT_PLATFORMS);
   const [busy, setBusy] = useState(false);
@@ -65,6 +71,12 @@ export function PublishHub({ contents }: PublishHubProps) {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
 
   const selected = useMemo(() => contents.find((item) => `${item.title}-${item.created_at}` === sourceId), [contents, sourceId]);
+
+  // 预选值只用一次：用掉就通知父级清掉，避免切页回来又被覆盖
+  useEffect(() => {
+    if (initialSourceId && sourceId !== "custom") onSourceConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const sourceText = sourceId === "custom" ? customText : (selected?.output ?? "");
 
   const togglePlatform = (name: string) => {

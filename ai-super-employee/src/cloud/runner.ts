@@ -8,6 +8,7 @@ import {
   type ChannelKind,
 } from "./provider";
 import { resolveStepPrompt, resolveStepTemplate } from "./agent-routing";
+import { estimateTokens, recordUsage } from "./usage";
 import type { AgentRow, AgentTemplate, KnowledgeSnippet } from "./api";
 import {
   insertTask,
@@ -86,19 +87,63 @@ function isRetryable(error: unknown): boolean {
 
 const RETRY_DELAYS = [2000, 6000, 15000];
 
+/** 统计埋点：所有模型调用都经过 collect，这里记一条用量（本机留档，失败也记）。 */
+async function tracked<T extends { tokens: number }>(
+  channel: "platform" | "custom",
+  model: string,
+  promptChars: number,
+  run: () => Promise<T>,
+): Promise<T> {
+  const started = performance.now();
+  try {
+    const result = await run();
+    recordUsage({
+      channel,
+      model,
+      ok: true,
+      tokens: (result.tokens || 0) > 0 ? result.tokens : estimateTokens(" ".repeat(promptChars)),
+      ms: Math.round(performance.now() - started),
+    });
+    return result;
+  } catch (error) {
+    recordUsage({
+      channel,
+      model,
+      ok: false,
+      tokens: estimateTokens(" ".repeat(promptChars)),
+      ms: Math.round(performance.now() - started),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
 async function collect(
   messages: { role: string; content: string }[],
   modelId: string,
   options: { json?: boolean; signal?: AbortSignal } = {},
 ): Promise<{ text: string; tokens: number }> {
+  const promptChars = messages.reduce((sum, item) => sum + String(item.content ?? "").length, 0);
+
   if (loadChannel() === "custom" && loadCustomProvider()) {
-    return streamCustom(messages as never, {
-      json: options.json,
-      signal: options.signal,
-      maxTokens: options.json ? 1400 : 3000,
-    });
+    const provider = loadCustomProvider();
+    return tracked("custom", provider?.model || "custom", promptChars, () =>
+      streamCustom(messages as never, {
+        json: options.json,
+        signal: options.signal,
+        maxTokens: options.json ? 1400 : 3000,
+      }),
+    );
   }
 
+  return tracked("platform", modelId, promptChars, () => collectPlatform(messages, modelId, options));
+}
+
+async function collectPlatform(
+  messages: { role: string; content: string }[],
+  modelId: string,
+  options: { json?: boolean; signal?: AbortSignal } = {},
+): Promise<{ text: string; tokens: number }> {
   let text = "";
   let tokens = 0;
 
