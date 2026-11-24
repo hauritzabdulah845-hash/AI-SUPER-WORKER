@@ -195,7 +195,7 @@ function tsToSrt(seconds: number): string {
 }
 
 /** 按方案时长生成 SRT（有字幕的镜头才进时间轴）。 */
-export function buildSrt(scenes: MixScene[]): string {
+export function buildSrt(scenes: { order: number; subtitle?: string; duration: number }[]): string {
   const blocks: string[] = [];
   let cursor = 0;
   let index = 1;
