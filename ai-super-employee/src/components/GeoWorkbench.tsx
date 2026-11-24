@@ -1,7 +1,5 @@
 import { useState } from "react";
 import {
-  ArrowUpRight,
-  CheckCircle2,
   ClipboardCopy,
   Download,
   FileText,
@@ -17,12 +15,12 @@ import {
   generateGeoAssets,
   geoMarkdown,
   runGeoAudit,
-  testBrandMention,
   type GeoAssetBundle,
   type GeoAuditResult,
-  type GeoMentionTest,
 } from "../cloud/geo";
 import { getKnowledgeDoc, type KnowledgeRow } from "../cloud/api";
+import { GeoMonitor } from "./GeoMonitor";
+import { MAX_QUESTIONS } from "../cloud/geomonitor";
 
 interface GeoWorkbenchProps {
   knowledge: KnowledgeRow[];
@@ -70,7 +68,6 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
   const [notice, setNotice] = useState("");
   const [audit, setAudit] = useState<GeoAuditResult | null>(null);
   const [assets, setAssets] = useState<GeoAssetBundle | null>(null);
-  const [tests, setTests] = useState<GeoMentionTest[] | null>(null);
 
   const loadFromKnowledge = async () => {
     if (!knowledge.length) {
@@ -129,32 +126,16 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
     }
   };
 
-  const runTests = async () => {
-    setBusy("test");
-    setError("");
-    setNotice("");
-    try {
-      const questions = questionsText.split("\n").map((item) => item.trim()).filter(Boolean);
-      const result = await testBrandMention({ brand, questions });
-      setTests(result);
-      const hit = result.filter((item) => item.mentioned).length;
-      setNotice(`提及率测试完成：${hit}/${result.length}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "测试失败");
-    } finally {
-      setBusy("");
-    }
-  };
 
   const exportAll = () => {
     downloadMarkdown(
       `GEO工作台-${new Date().toISOString().slice(0, 10)}.md`,
-      geoMarkdown({ brand, audit, assets, tests }),
+      geoMarkdown({ brand, audit, assets, tests: null }),
     );
-    setNotice("已导出 Markdown（体检 + 素材 + 提及率）");
+    setNotice("已导出 Markdown（体检 + 素材）");
   };
 
-  const hitCount = tests ? tests.filter((item) => item.mentioned).length : 0;
+  const questionList = questionsText.split("\n").map((item) => item.trim()).filter(Boolean);
 
   return (
     <section className="geo-layout">
@@ -164,7 +145,7 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
             <h2><Globe2 size={16} /> GEO 内容工作台</h2>
             <p>让 DeepSeek、豆包、Kimi 在回答用户问题时，主动提及并推荐你的企业：体检 → 生成可引用素材 → 提及率复测。</p>
           </div>
-          <button type="button" className="button button-secondary" onClick={exportAll} disabled={!audit && !assets && !tests}>
+          <button type="button" className="button button-secondary" onClick={exportAll} disabled={!audit && !assets}>
             <Download size={15} />导出
           </button>
         </div>
@@ -285,43 +266,35 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
         </div>
       )}
 
-      <div className="console-card geo-tests">
+      <div className="console-card geo-questions-card">
         <div className="console-card-header">
           <div>
-            <h2><TestTube2 size={15} /> 提及率复测</h2>
-            <p>用真实问法问模型，看它会不会主动提到你。修完素材再跑一次，就是可对比的基线。</p>
+            <h2><TestTube2 size={15} /> 监测问题集</h2>
+            <p>连续监测必须用<b>同一组问题</b>，否则前后不可比。生成素材后会自动填入 5 条默认问法。</p>
           </div>
-          {tests && <strong className={`geo-rate ${hitCount === tests.length ? "good" : hitCount === 0 ? "low" : "mid"}`}>{hitCount}/{tests.length}</strong>}
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => setQuestionsText(defaultGeoQuestions(brand, keywords).join("\n"))}
+          >
+            <Sparkles size={14} />填入默认问法
+          </button>
         </div>
         <label className="geo-questions">
-          测试问题（每行一条）
-          <textarea value={questionsText} onChange={(event) => setQuestionsText(event.target.value)} rows={5} placeholder="生成素材后会自动填入 5 条默认问法，可自行增删。" />
+          测试问题（每行一条，最多 {MAX_QUESTIONS} 条）
+          <textarea
+            value={questionsText}
+            onChange={(event) => setQuestionsText(event.target.value)}
+            rows={5}
+            placeholder="例如：现煮茶饮哪家比较靠谱？"
+          />
         </label>
-        <div className="geo-actions">
-          <button type="button" className="button button-primary" onClick={() => void runTests()} disabled={busy !== ""}>
-            {busy === "test" ? <LoaderCircle size={15} className="spin" /> : <TestTube2 size={15} />}跑提及率测试
-          </button>
-          {!tests && <small className="geo-hint">提示：平台通道有配额时，请到「模型接入」切换自定义通道再测。</small>}
-        </div>
-        {tests && (
-          <div className="geo-test-list">
-            {tests.map((item, index) => (
-              <div className={`geo-test ${item.mentioned ? "hit" : "miss"}`} key={`${item.question}-${index}`}>
-                <div>
-                  {item.mentioned ? <CheckCircle2 size={15} /> : <Target size={15} />}
-                  <strong>{item.question}</strong>
-                  <em>{item.mentioned ? "已提及" : "未提及"}</em>
-                </div>
-                <p>{item.answer}</p>
-              </div>
-            ))}
-            <p className="geo-hint">
-              提及率 {hitCount}/{tests.length}。未提及时：把「品牌事实卡」补进官网/知识库，再用
-              <ArrowUpRight size={12} /> 同样问题复测。
-            </p>
-          </div>
-        )}
+        <small className="geo-hint">
+          共 {questionList.length} 条{questionList.length > MAX_QUESTIONS ? `（本次只用前 ${MAX_QUESTIONS} 条）` : ""}
+        </small>
       </div>
+
+      <GeoMonitor brand={brand} questions={questionList} />
     </section>
   );
 }
