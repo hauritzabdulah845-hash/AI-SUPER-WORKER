@@ -661,8 +661,9 @@ export function buildDigitalRecipe(
   );
 
   lines.push(`ffmpeg -y${cont}`);
-  inputs.forEach((input, index) => {
-    lines.push(`  ${input}${index === inputs.length - 1 ? "" : cont}`);
+  // 每个输入行都必须续行：后面紧跟 -filter_complex，末项不加 cont 会把命令截断成两条
+  inputs.forEach((input) => {
+    lines.push(`  ${input}${cont}`);
   });
   lines.push(`  -filter_complex "${parts.join(";")}"${cont}`);
   if (audio) {
