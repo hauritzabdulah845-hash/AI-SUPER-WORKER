@@ -22,7 +22,10 @@
     "test:zip": "node scripts/zipcheck.mjs",
     "test:sidebar": "node scripts/sidebar-check.mjs",
     "test:modal": "node scripts/modal-check.mjs",
-    "test:modallayout": "node scripts/modal-height.mjs"
+    "test:modallayout": "node scripts/modal-height.mjs",
+    "test:font": "node scripts/font-check.mjs",
+    "test:geotrack": "npx tsx scripts/geotrack-check.ts",
+    "test:geomstore": "npx tsx scripts/geomstore-check.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
