@@ -29,6 +29,65 @@
   --destructive: 0 75% 55%;
   --destructive-foreground: 0 0% 100%;
   --radius: 0.875rem;
+
+  /* ===== 设计令牌（第二十二批：设计系统收敛）=====
+     说明：上方 --accent/--border/--primary 等是 Tailwind/shadcn 的 HSL 三元组变量
+     （tailwind.config 以 hsl(var(--accent)) 引用），不能改成 hex，否则组件库失效。
+     因此品牌色令牌使用 --brand* 命名，与评审建议的 --accent 语义等价。
+     App.css 里的旧变量（--purple/--ink/--line 等）已改为指向这里的令牌。 */
+
+  /* 品牌/强调：只用于主按钮、侧栏选中态、链接与强调文字、品牌标识 */
+  --brand: #6d5dfc;        /* 品牌主紫（原 --purple / #6d5dfc） */
+  --brand-hover: #5646e8;  /* 主紫悬停/按下（原 --purple-dark，合并 #5b4bc4） */
+  --brand-strong: #4b3fd0; /* 浅紫底上的紫色文字（合并 #4b3fd0） */
+  --brand-mid: #8a78e4;    /* 中紫：聚焦边框/次级强调（合并 #8b7bdd） */
+  --brand-soft: #efedff;   /* 浅紫底（原 --purple-soft，合并 #eeebfc） */
+
+  /* 语义色：状态一律用语义色，不再借用品牌紫 */
+  --success: #18a878;        /* 成功（原 --green） */
+  --success-strong: #0f7a58; /* 成功文字（合并 #0f6e56） */
+  --success-soft: #e3f6ee;   /* 成功浅底（合并 #e1f5ee/#e7f7f1） */
+  --warning: #d97706;        /* 警告 */
+  --warning-strong: #b45309; /* 警告文字 */
+  --warning-soft: #fef3c7;   /* 警告浅底 */
+  --danger: #c4544a;         /* 危险/失败 */
+  --danger-strong: #b42318;  /* 危险强文字 */
+  --danger-soft: #fdeceb;    /* 危险浅底 */
+
+  /* 中性灰阶 6 级：由深到浅，归并原十余种近似灰 */
+  --ink-1: #18172b; /* 最深：标题与主文字（原 --ink） */
+  --ink-2: #2d2c3f; /* 强文字（合并 #221e33/#3a3545） */
+  --ink-3: #514b60; /* 正文次级（合并 #4a4459） */
+  --ink-4: #57546e; /* 辅助文字（较深一档） */
+  --ink-5: #6b6577; /* 最浅文字：原 #9c96a3/#a19ba7/#a29cae/#a49dab 加深至此，白底对比度约 5.2:1（WCAG AA） */
+  --ink-6: #efedf2; /* 最浅：边框与浅底（合并 #ece9ef/#eeecf4） */
+
+  /* 表面 */
+  --surface: #ffffff;       /* 卡片/面板白底（原 --paper / #fff） */
+  --surface-muted: #f7f7fb; /* 浅灰底（原 --off-white，合并 #f8f7fb/#faf9fd） */
+  --bg: #fbfbfe;            /* 页面底（合并 #fbfaff） */
+  /* 边框沿用 App.css 的 --line（#e8e7ef）；--border 已被 Tailwind HSL 占用，不另设 */
+
+  /* 间距刻度（4px 基准） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* 圆角 3 档 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  /* 字号档（与 scripts/font-check.mjs 三级地板对齐：辅助 ≥11px、正文 ≥12.5px；
+     注意：font-check 按 px 数值校验，App.css 中不批量把 font-size 换成 var()，以免门禁失明） */
+  --text-xs: 11px;   /* 辅助信息下限 */
+  --text-sm: 12.5px; /* 正文与可交互下限 */
+  --text-md: 13.5px; /* 常规正文 */
+  --text-lg: 16px;   /* 小标题 */
+  --text-xl: 20px;   /* 标题 */
 }
 
 * {

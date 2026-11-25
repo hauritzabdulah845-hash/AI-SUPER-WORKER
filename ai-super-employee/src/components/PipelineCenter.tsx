@@ -16,6 +16,16 @@ import {
   type PipelineStepKind,
   type PipelineStepResult,
 } from "../cloud/pipeline";
+import {
+  checkHealth,
+  loadSchedulerConfig,
+  pullDue,
+  saveSchedulerConfig,
+  schedulerConfigured,
+  syncSchedules,
+  type SchedulerConfig,
+  type SchedulerHealth,
+} from "../cloud/scheduler";
 
 const KIND_ORDER: PipelineStepKind[] = ["task", "geo", "video", "mixcut", "leads-scan"];
 
@@ -75,6 +85,11 @@ export function PipelineCenter() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [toast, setToast] = useState("");
   const toastTimer = useRef<number | null>(null);
+  const [schedConfig, setSchedConfig] = useState<SchedulerConfig>(() => loadSchedulerConfig());
+  const [schedHealth, setSchedHealth] = useState<SchedulerHealth | null>(null);
+  const [schedDueCount, setSchedDueCount] = useState<number | null>(null);
+  const [schedBusy, setSchedBusy] = useState(false);
+  const [schedError, setSchedError] = useState("");
 
   const notify = useCallback((message: string) => {
     setToast(message);
@@ -207,6 +222,28 @@ export function PipelineCenter() {
 
   const enabledCount = pipelines.filter((row) => row.enabled).length;
 
+  const updateSchedConfig = (next: SchedulerConfig) => {
+    setSchedConfig(next);
+    saveSchedulerConfig(next);
+  };
+
+  const syncToWorker = async () => {
+    setSchedBusy(true);
+    setSchedError("");
+    try {
+      const health = await checkHealth(schedConfig);
+      setSchedHealth(health);
+      const count = await syncSchedules(schedConfig, loadPipelines());
+      const due = await pullDue(schedConfig);
+      setSchedDueCount(due.length);
+      notify(`已同步 ${count} 条计划到常驻调度（当前到期 ${due.length} 条）`);
+    } catch (error) {
+      setSchedError(error instanceof Error ? error.message : "同步失败");
+    } finally {
+      setSchedBusy(false);
+    }
+  };
+
   return (
     <section className="pipeline-page">
       <div className="console-card pipeline-head">
@@ -236,6 +273,61 @@ export function PipelineCenter() {
       </div>
 
       {toast && <div className="pipeline-toast">{toast}</div>}
+
+      <div className="console-card pipeline-scheduler">
+        <div className="console-card-header">
+          <div>
+            <h2>常驻调度（骨架）</h2>
+            <p>
+              把计划镜像到常驻 worker（scheduler-worker），关页面期间计划与历史不丢、到期可查。
+              worker 只存计划、算到期、记历史，不代跑需登录态的任务；真 7×24 代跑需云端执行身份，后置。
+            </p>
+          </div>
+          <span className={`pipeline-badge ${schedHealth?.ok ? "on" : ""}`}>{schedHealth?.ok ? "服务在线" : "未连接"}</span>
+        </div>
+        <div className="pipeline-form-row">
+          <label>
+            <span>服务地址</span>
+            <input
+              value={schedConfig.baseUrl}
+              onChange={(event) => updateSchedConfig({ ...schedConfig, baseUrl: event.target.value })}
+              placeholder="http://127.0.0.1:8789"
+            />
+          </label>
+          <label>
+            <span>adminSecret</span>
+            <input
+              type="password"
+              value={schedConfig.secret}
+              onChange={(event) => updateSchedConfig({ ...schedConfig, secret: event.target.value })}
+              placeholder="与 worker config.json 一致"
+            />
+          </label>
+          <label>
+            <span>状态</span>
+            <input
+              readOnly
+              value={
+                schedHealth?.ok
+                  ? `v${schedHealth.version ?? "?"} · 计划 ${schedHealth.schedules ?? 0} · 到期 ${schedDueCount ?? "—"}`
+                  : "填好地址与密钥后点同步"
+              }
+            />
+          </label>
+        </div>
+        {schedError && <p className="pipeline-scheduler-error">{schedError}</p>}
+        <div className="pipeline-editor-actions">
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={() => void syncToWorker()}
+            disabled={schedBusy || !schedulerConfigured(schedConfig)}
+          >
+            {schedBusy ? <LoaderCircle size={15} className="spin" /> : <Play size={15} />}
+            {schedBusy ? "同步中" : "同步计划"}
+          </button>
+        </div>
+      </div>
 
       {draft && (
         <div className="console-card pipeline-editor">

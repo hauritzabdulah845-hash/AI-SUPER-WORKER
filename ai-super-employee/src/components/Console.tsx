@@ -54,6 +54,7 @@ import {
   Search,
   Send,
   Sparkles,
+  Star,
   Target,
   Trash2,
   Timer,
@@ -168,6 +169,7 @@ import {
   type WecomLinkRow,
 } from "../cloud/api";
 import { parseLeadsCsv, type LeadImportRow } from "../cloud/leadcsv";
+import { loadBroadcasts } from "../cloud/broadcast";
 import { summarizeTasks, taskStatsHeadline } from "../cloud/tasksummary";
 
 /**
@@ -176,9 +178,9 @@ import { summarizeTasks, taskStatsHeadline } from "../cloud/tasksummary";
  */
 const NAV_GROUP = {
   core: "工作台",
-  sales: "获客与转化",
-  content: "内容与创作",
-  system: "设置",
+  content: "内容生产",
+  sales: "获客转化",
+  system: "经营系统",
 } as const;
 
 const navItems = [
@@ -186,28 +188,28 @@ const navItems = [
   { label: "远程指令", icon: Inbox, group: NAV_GROUP.core },
   { label: "智能体团队", icon: Bot, group: NAV_GROUP.core },
   { label: "任务中心", icon: FolderKanban, group: NAV_GROUP.core },
-  { label: "AI 会议", icon: Video, group: NAV_GROUP.core },
   { label: "定时任务", icon: Timer, group: NAV_GROUP.core },
   { label: "模板中心", icon: Sparkles, group: NAV_GROUP.core },
-  { label: "线索与客户", icon: Users, group: NAV_GROUP.sales },
-  { label: "地图获客", icon: MapIcon, group: NAV_GROUP.sales },
-  { label: "企微私域", icon: MessageSquareText, group: NAV_GROUP.sales },
-  { label: "群发计划", icon: Send, group: NAV_GROUP.sales },
-  { label: "客服渠道", icon: Radio, group: NAV_GROUP.sales },
-  { label: "GEO 工作台", icon: Globe2, group: NAV_GROUP.sales },
-  { label: "数据洞察", icon: BarChart3, group: NAV_GROUP.sales },
   { label: "内容工厂", icon: FileText, group: NAV_GROUP.content },
   { label: "聚合发布", icon: Megaphone, group: NAV_GROUP.content },
-  { label: "企业知识库", icon: BookOpen, group: NAV_GROUP.content },
   { label: "AI 创作", icon: Palette, group: NAV_GROUP.content },
   { label: "视频创作", icon: Clapperboard, group: NAV_GROUP.content },
   { label: "混剪工坊", icon: Scissors, group: NAV_GROUP.content },
   { label: "数字人工坊", icon: Mic, group: NAV_GROUP.content },
   { label: "AI 办公", icon: Presentation, group: NAV_GROUP.content },
-  { label: "模型接入", icon: Plug, group: NAV_GROUP.system },
-  { label: "企业设置", icon: Building2, group: NAV_GROUP.system },
-  { label: "合同审查", icon: Scale, group: NAV_GROUP.system },
+  { label: "GEO 工作台", icon: Globe2, group: NAV_GROUP.content },
+  { label: "线索与客户", icon: Users, group: NAV_GROUP.sales },
+  { label: "地图获客", icon: MapIcon, group: NAV_GROUP.sales },
+  { label: "企微私域", icon: MessageSquareText, group: NAV_GROUP.sales },
+  { label: "群发计划", icon: Send, group: NAV_GROUP.sales },
+  { label: "客服渠道", icon: Radio, group: NAV_GROUP.sales },
+  { label: "数据洞察", icon: BarChart3, group: NAV_GROUP.sales },
+  { label: "企业知识库", icon: BookOpen, group: NAV_GROUP.system },
+  { label: "AI 会议", icon: Video, group: NAV_GROUP.system },
   { label: "AI 人事", icon: Briefcase, group: NAV_GROUP.system },
+  { label: "合同审查", icon: Scale, group: NAV_GROUP.system },
+  { label: "企业设置", icon: Building2, group: NAV_GROUP.system },
+  { label: "模型接入", icon: Plug, group: NAV_GROUP.system },
 ];
 
 const STAGE_FLOW = ["新建", "跟进中", "已预约", "已成交"];
@@ -254,6 +256,40 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
   const [showNotifications, setShowNotifications] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
+  // 侧栏重组（第二十三批）：搜索过滤 / 分组折叠 / 最近使用 / 收藏，状态只存本机。
+  const [navQuery, setNavQuery] = useState("");
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = window.localStorage.getItem("ai-employee:sidebar-groups");
+      if (raw) return JSON.parse(raw) as Record<string, boolean>;
+    } catch {
+      /* 本机存储不可用时走默认展开策略 */
+    }
+    // 默认只展开「工作台」，其余组折叠，当前页所在组由 effect 自动展开。
+    return { [NAV_GROUP.content]: true, [NAV_GROUP.sales]: true, [NAV_GROUP.system]: true };
+  });
+  const [navRecent, setNavRecent] = useState<string[]>(() => {
+    try {
+      const raw = window.localStorage.getItem("ai-employee:nav-recent");
+      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string").slice(0, 4) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [navFavorites, setNavFavorites] = useState<string[]>(() => {
+    try {
+      const raw = window.localStorage.getItem("ai-employee:nav-favorites");
+      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+    } catch {
+      return [];
+    }
+  });
+  const [demoBannerDismissed, setDemoBannerDismissed] = useState(
+    () => window.localStorage.getItem("ai-employee:demo-banner-dismissed") === "1",
+  );
+  const [overviewGoal, setOverviewGoal] = useState("");
   const [toast, setToast] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<AnyTask | null>(null);
@@ -670,6 +706,30 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
     setActiveNav((current) => (current === next ? current : next));
   }, [initialNav]);
 
+  // 侧栏：当前页所在组自动展开；最近使用记录（最多 4 个，只存本机）
+  useEffect(() => {
+    const group = navItems.find((item) => item.label === activeNav)?.group;
+    if (group) {
+      setCollapsedGroups((current) => (current[group] ? { ...current, [group]: false } : current));
+    }
+    setNavRecent((current) => {
+      const next = [activeNav, ...current.filter((label) => label !== activeNav)].slice(0, 4);
+      return next.length === current.length && next.every((label, index) => label === current[index]) ? current : next;
+    });
+  }, [activeNav]);
+
+  useEffect(() => {
+    window.localStorage.setItem("ai-employee:sidebar-groups", JSON.stringify(collapsedGroups));
+  }, [collapsedGroups]);
+
+  useEffect(() => {
+    window.localStorage.setItem("ai-employee:nav-recent", JSON.stringify(navRecent));
+  }, [navRecent]);
+
+  useEffect(() => {
+    window.localStorage.setItem("ai-employee:nav-favorites", JSON.stringify(navFavorites));
+  }, [navFavorites]);
+
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 4200);
@@ -716,6 +776,20 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
   const failedCount = tasks.filter((task) => task.status === "failed").length;
   const pendingLeads = leads.filter((lead) => lead.stage === "新建" || lead.stage === "跟进中").length;
   const highIntent = leads.filter((lead) => lead.intent === "高意向").length;
+  // 总控「待你处理」数据源（均为既有真实数据，不另造）：
+  // - 待审批群发：群发计划存本机（loadBroadcasts），approval === "pending" 即待审批
+  // - 高意向待跟进：线索 intent=高意向 且阶段在新建/跟进中
+  // - 失败待重跑：任务 status=failed
+  const pendingApprovals = useMemo(
+    () => loadBroadcasts().filter((plan) => plan.approval === "pending").length,
+    // 切回总控或任务变化时重读本机群发计划，避免审批后计数不刷新
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeNav, tasks],
+  );
+  const highIntentPending = leads.filter(
+    (lead) => lead.intent === "高意向" && (lead.stage === "新建" || lead.stage === "跟进中"),
+  ).length;
+  const todoTotal = pendingApprovals + highIntentPending + failedCount;
   const totalTokens = tasks.reduce((sum, task) => sum + ((task as DemoTaskRow).tokens ?? 0), 0);
 
   const now = new Date();
@@ -1563,6 +1637,64 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
     setToast("已填入官方默认人设，保存后生效");
   };
 
+  /* ------------------------------ 侧栏重组（呈现层） ------------------------------ */
+
+  const goNav = (label: string) => {
+    setActiveNav(label);
+    setMobileNav(false);
+  };
+
+  const toggleGroup = (group: string) => {
+    setCollapsedGroups((current) => ({ ...current, [group]: !current[group] }));
+  };
+
+  const toggleFavorite = (label: string) => {
+    setNavFavorites((current) => (current.includes(label) ? current.filter((item) => item !== label) : [...current, label]));
+  };
+
+  const dismissDemoBanner = () => {
+    window.localStorage.setItem("ai-employee:demo-banner-dismissed", "1");
+    setDemoBannerDismissed(true);
+  };
+
+  const renderNavItem = (item: (typeof navItems)[number]) => {
+    const Icon = item.icon;
+    const favorite = navFavorites.includes(item.label);
+    return (
+      <div className="console-nav-item" key={item.label}>
+        <button
+          type="button"
+          className={activeNav === item.label ? "active" : ""}
+          onClick={() => goNav(item.label)}
+        >
+          <Icon size={18} />
+          {item.label}
+          {item.label === "任务中心" && tasks.length > 0 && <span className="nav-count">{tasks.length}</span>}
+        </button>
+        <button
+          type="button"
+          className={`nav-star ${favorite ? "on" : ""}`}
+          aria-label={favorite ? `取消收藏${item.label}` : `收藏${item.label}`}
+          title={favorite ? "取消收藏" : "收藏到侧栏顶部"}
+          onClick={() => toggleFavorite(item.label)}
+        >
+          <Star size={13} fill={favorite ? "currentColor" : "none"} />
+        </button>
+      </div>
+    );
+  };
+
+  const navSearch = navQuery.trim().toLowerCase();
+  const navSearchResults = navSearch
+    ? navItems.filter((item) => item.label.toLowerCase().includes(navSearch))
+    : [];
+  const favoriteItems = navFavorites
+    .map((label) => navItems.find((item) => item.label === label))
+    .filter((item): item is (typeof navItems)[number] => Boolean(item));
+  const recentItems = navRecent
+    .map((label) => navItems.find((item) => item.label === label))
+    .filter((item): item is (typeof navItems)[number] => Boolean(item));
+
   return (
     <div className="console-shell">
       <aside className={`console-sidebar ${mobileNav ? "mobile-open" : ""}`}>
@@ -1580,34 +1712,63 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
           <ChevronDown size={15} />
         </div>
 
+        <div className="sidebar-nav-search">
+          <Search size={14} />
+          <input
+            type="search"
+            aria-label="搜索功能模块"
+            placeholder="搜索模块…"
+            value={navQuery}
+            onChange={(event) => setNavQuery(event.target.value)}
+          />
+          {navQuery && (
+            <button type="button" aria-label="清空搜索" onClick={() => setNavQuery("")}><X size={13} /></button>
+          )}
+        </div>
+
         <nav className="console-nav" aria-label="产品功能">
-          {Object.values(NAV_GROUP).map((group) => {
-            const items = navItems.filter((item) => item.group === group);
-            if (!items.length) return null;
-            return (
-              <div className="console-nav-group" key={group}>
-                <span className="console-nav-label">{group}</span>
-                {items.map((item) => {
-                  const Icon = item.icon;
-                  return (
+          {navSearch ? (
+            <div className="console-nav-group">
+              <span className="console-nav-label">搜索结果</span>
+              {navSearchResults.length > 0
+                ? navSearchResults.map((item) => renderNavItem(item))
+                : <p className="nav-search-empty">没有匹配的模块，换个关键词试试</p>}
+            </div>
+          ) : (
+            <>
+              {favoriteItems.length > 0 && (
+                <div className="console-nav-group">
+                  <span className="console-nav-label">收藏</span>
+                  {favoriteItems.map((item) => renderNavItem(item))}
+                </div>
+              )}
+              {recentItems.length > 0 && (
+                <div className="console-nav-group">
+                  <span className="console-nav-label">最近使用</span>
+                  {recentItems.map((item) => renderNavItem(item))}
+                </div>
+              )}
+              {Object.values(NAV_GROUP).map((group) => {
+                const items = navItems.filter((item) => item.group === group);
+                if (!items.length) return null;
+                const collapsed = Boolean(collapsedGroups[group]);
+                return (
+                  <div className="console-nav-group" key={group}>
                     <button
                       type="button"
-                      key={item.label}
-                      className={activeNav === item.label ? "active" : ""}
-                      onClick={() => {
-                        setActiveNav(item.label);
-                        setMobileNav(false);
-                      }}
+                      className="console-nav-label console-nav-group-toggle"
+                      aria-expanded={!collapsed}
+                      onClick={() => toggleGroup(group)}
                     >
-                      <Icon size={18} />
-                      {item.label}
-                      {item.label === "任务中心" && tasks.length > 0 && <span className="nav-count">{tasks.length}</span>}
+                      <span>{group}</span>
+                      <ChevronDown size={13} className={collapsed ? "group-chevron closed" : "group-chevron"} />
                     </button>
-                  );
-                })}
-              </div>
-            );
-          })}
+                    {!collapsed && items.map((item) => renderNavItem(item))}
+                  </div>
+                );
+              })}
+            </>
+          )}
         </nav>
 
         <div className="sidebar-capacity">
@@ -1680,12 +1841,89 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                   : `集中管理${activeNav}，所有数据来自云端实时读取。`}
               </p>
             </div>
-            <span className="demo-data-badge"><CircleDot size={13} />{user ? "我的云端工作区" : "云端工作区 · 实时"}</span>
           </div>
+
+          {!demoBannerDismissed && (
+            <div className="workspace-banner" role="note">
+              <CircleDot size={14} />
+              <span>{user ? "我的云端工作区 · 数据按账号隔离存放，实时读取。" : "云端工作区 · 实时。绑定账号后，数据归属你本人并独立隔离。"}</span>
+              <button type="button" aria-label="关闭工作区提示" onClick={dismissDemoBanner}><X size={14} /></button>
+            </div>
+          )}
 
           {activeNav === "AI 总控" && (
             <>
-              <section className="console-metrics">
+              <section className="console-card overview-command">
+                <div className="console-card-header">
+                  <div><h2>给 AI 团队下个目标</h2><p>一句话说清目标，AI 总控自动拆解、分配智能体并交付结果</p></div>
+                </div>
+                <div className="overview-command-body">
+                  <textarea
+                    rows={3}
+                    aria-label="业务目标"
+                    placeholder="例如：为秋季新品制定一周增长计划，并产出首批内容"
+                    value={overviewGoal}
+                    onChange={(event) => setOverviewGoal(event.target.value)}
+                  />
+                  <div className="overview-command-row">
+                    <div className="overview-chips">
+                      {["为新品制定 7 天内容排期并生成首批文案", "筛选高意向线索并生成跟进话术", "汇总本周任务与线索，生成经营复盘", "把产品资料整理成客服知识库问答"].map((example) => (
+                        <button type="button" key={example} onClick={() => setOverviewGoal(example)}>{example}</button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      className="button button-primary"
+                      onClick={() => openComposer(overviewGoal.trim() ? { goal: overviewGoal.trim() } : undefined)}
+                    >
+                      <Send size={15} />开始执行
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section className="console-card todo-card">
+                <div className="console-card-header">
+                  <div><h2>待你处理</h2><p>{todoTotal > 0 ? `共 ${todoTotal} 项需要你确认或跟进` : "审批、高意向线索与失败任务会汇总到这里"}</p></div>
+                </div>
+                {todoTotal > 0 ? (
+                  <div className="todo-list">
+                    {pendingApprovals > 0 && (
+                      <button type="button" className="todo-item" onClick={() => setActiveNav("群发计划")}>
+                        <span className="todo-icon todo-warning"><Inbox size={16} /></span>
+                        <span className="todo-text"><strong>待审批群发</strong><small>审批通过后才会发送</small></span>
+                        <span className="todo-count">{pendingApprovals}</span>
+                        <ArrowUpRight size={15} />
+                      </button>
+                    )}
+                    {highIntentPending > 0 && (
+                      <button type="button" className="todo-item" onClick={() => setActiveNav("线索与客户")}>
+                        <span className="todo-icon todo-warning"><Target size={16} /></span>
+                        <span className="todo-text"><strong>高意向线索待跟进</strong><small>新建 / 跟进中阶段</small></span>
+                        <span className="todo-count">{highIntentPending}</span>
+                        <ArrowUpRight size={15} />
+                      </button>
+                    )}
+                    {failedCount > 0 && (
+                      <button type="button" className="todo-item" onClick={() => { setTaskFilter("failed"); setActiveNav("任务中心"); }}>
+                        <span className="todo-icon todo-danger"><CircleDot size={16} /></span>
+                        <span className="todo-text"><strong>失败任务待重跑</strong><small>可用同一目标一键重跑</small></span>
+                        <span className="todo-count">{failedCount}</span>
+                        <ArrowUpRight size={15} />
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="overview-empty">
+                    <CheckCircle2 size={22} />
+                    <strong>暂无待处理事项</strong>
+                    <span>新的审批、高意向线索或失败任务会出现在这里</span>
+                    <button type="button" className="button button-primary" onClick={() => openComposer()}>发起新任务</button>
+                  </div>
+                )}
+              </section>
+
+              <section className="console-metrics compact">
                 {[
                   { label: "云端任务总数", value: String(tasks.length), change: "实时读取", icon: Zap, color: "violet" },
                   { label: "执行中", value: String(runningCount), change: "多智能体协作", icon: Activity, color: "blue" },
@@ -1695,7 +1933,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                   const Icon = metric.icon;
                   return (
                     <div className="console-metric" key={metric.label}>
-                      <div className={`metric-icon metric-${metric.color}`}><Icon size={20} /></div>
+                      <div className={`metric-icon metric-${metric.color}`}><Icon size={18} /></div>
                       <span>{metric.label}</span>
                       <strong>{metric.value}</strong>
                       <small><TrendingUp size={13} />{metric.change}</small>
@@ -1705,7 +1943,46 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
               </section>
 
               <section className="console-dashboard-grid">
-                <div className="console-card performance-card">
+                <div className="console-card tasks-card">
+                  <div className="console-card-header"><div><h2>云端任务记录</h2><p>任务过程与产出均已持久化</p></div><button type="button" className="text-link" onClick={() => setActiveNav("任务中心")}>全部任务<ArrowUpRight size={14} /></button></div>
+                  {tasks.length === 0 ? (
+                    <div className="overview-empty">
+                      <FolderKanban size={22} />
+                      <strong>还没有任务</strong>
+                      <span>在上方输入一个业务目标，AI 团队马上开工</span>
+                      <button type="button" className="button button-primary" onClick={() => openComposer()}>创建第一个任务</button>
+                    </div>
+                  ) : (
+                    <TaskTable tasks={filteredTasks.slice(0, 5)} onOpen={openTask} onRerun={rerunTask} onDelete={removeTask} />
+                  )}
+                </div>
+
+                <div className="console-card team-status-card">
+                  <div className="console-card-header"><div><h2>AI 团队状态</h2><p>{agents.length} 位智能体在线协作</p></div><button type="button" className="text-link" onClick={() => setActiveNav("智能体团队")}>管理<ArrowUpRight size={14} /></button></div>
+                  {agents.length === 0 ? (
+                    <div className="overview-empty">
+                      <Bot size={22} />
+                      <strong>还没有智能体</strong>
+                      <span>从岗位模板一键创建你的 AI 员工</span>
+                      <button type="button" className="button button-primary" onClick={() => setActiveNav("模板中心")}>去模板中心创建</button>
+                    </div>
+                  ) : (
+                    <div className="team-status-list">
+                      {agents.slice(0, 5).map((agent) => (
+                        <div key={agent.id} className="team-status-item">
+                          <div className="agent-mini-icon metric-violet"><Bot size={16} /></div>
+                          <div><strong>{agent.name}</strong><span>{agent.template_name ?? agent.domain}</span></div>
+                          <span className="agent-load"><span style={{ width: `${60 + (agent.id % 4) * 9}%` }} /></span>
+                          <i />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {tasks.length > 0 && (
+                <section className="console-card performance-card compact">
                   <div className="console-card-header">
                     <div><h2>任务执行趋势</h2><p>近 7 天任务创建数量 · 云端实时统计</p></div>
                     <span className="period-button">近 7 天<ChevronDown size={14} /></span>
@@ -1733,27 +2010,8 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                     </svg>
                     <div className="chart-labels">{trend.map((day) => <span key={day.dayStart}>{day.label}</span>)}</div>
                   </div>
-                </div>
-
-                <div className="console-card team-status-card">
-                  <div className="console-card-header"><div><h2>AI 团队状态</h2><p>{agents.length} 位智能体在线协作</p></div><button type="button" className="text-link" onClick={() => setActiveNav("智能体团队")}>管理<ArrowUpRight size={14} /></button></div>
-                  <div className="team-status-list">
-                    {agents.slice(0, 5).map((agent) => (
-                      <div key={agent.id} className="team-status-item">
-                        <div className="agent-mini-icon metric-violet"><Bot size={16} /></div>
-                        <div><strong>{agent.name}</strong><span>{agent.template_name ?? agent.domain}</span></div>
-                        <span className="agent-load"><span style={{ width: `${60 + (agent.id % 4) * 9}%` }} /></span>
-                        <i />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </section>
-
-              <section className="console-card tasks-card">
-                <div className="console-card-header"><div><h2>云端任务记录</h2><p>任务过程与产出均已持久化</p></div><button type="button" className="text-link" onClick={() => setActiveNav("任务中心")}>全部任务<ArrowUpRight size={14} /></button></div>
-                <TaskTable tasks={filteredTasks.slice(0, 5)} onOpen={openTask} onRerun={rerunTask} onDelete={removeTask} />
-              </section>
+                </section>
+              )}
             </>
           )}
 

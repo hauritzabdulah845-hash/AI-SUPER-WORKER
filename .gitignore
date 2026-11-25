@@ -26,3 +26,7 @@ ai-super-employee/wecom-kf-service/data/
 # IM 指令网关：本地密钥与指令记录（绝不入库）
 ai-super-employee/im-bot-gateway/config.json
 ai-super-employee/im-bot-gateway/data/
+
+# 常驻调度 worker：本地密钥与调度数据（绝不入库）
+ai-super-employee/scheduler-worker/config.json
+ai-super-employee/scheduler-worker/data/
