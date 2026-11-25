@@ -1,0 +1,1 @@
+{"description":"常驻调度 worker（骨架）：存计划、算到期、记历史、心跳；不代跑需登录态的任务","name":"scheduler-worker","private":true,"scripts":{"start":"node src/server.mjs","test":"node test/run-test.mjs"},"type":"module","version":"1.0.0"}
