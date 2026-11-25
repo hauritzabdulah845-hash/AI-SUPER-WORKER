@@ -27,7 +27,9 @@
     "test:geotrack": "npx tsx scripts/geotrack-check.ts",
     "test:geomstore": "npx tsx scripts/geomstore-check.ts",
     "test:settings": "tsx scripts/settings-check.ts",
-    "test:contract": "tsx scripts/contract-check.ts"
+    "test:contract": "tsx scripts/contract-check.ts",
+    "test:meeting": "tsx scripts/meeting-check.ts",
+    "test:hr": "tsx scripts/hr-check.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

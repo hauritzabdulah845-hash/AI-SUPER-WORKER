@@ -7,6 +7,7 @@ import {
   Bell,
   BookOpen,
   Bot,
+  Briefcase,
   Building2,
   Check,
   CheckCircle2,
@@ -58,6 +59,7 @@ import {
   Timer,
   TrendingUp,
   Users,
+  Video,
   X,
   Zap,
 } from "lucide-react";
@@ -83,6 +85,8 @@ import { DigitalStudio } from "./DigitalStudio";
 import { PublishHub } from "./PublishHub";
 import { SettingsCenter } from "./SettingsCenter";
 import { ContractReview } from "./ContractReview";
+import { MeetingStudio } from "./MeetingStudio";
+import { HrStudio } from "./HrStudio";
 import {
   clearArtworks,
   generateImage,
@@ -182,6 +186,7 @@ const navItems = [
   { label: "远程指令", icon: Inbox, group: NAV_GROUP.core },
   { label: "智能体团队", icon: Bot, group: NAV_GROUP.core },
   { label: "任务中心", icon: FolderKanban, group: NAV_GROUP.core },
+  { label: "AI 会议", icon: Video, group: NAV_GROUP.core },
   { label: "定时任务", icon: Timer, group: NAV_GROUP.core },
   { label: "模板中心", icon: Sparkles, group: NAV_GROUP.core },
   { label: "线索与客户", icon: Users, group: NAV_GROUP.sales },
@@ -202,6 +207,7 @@ const navItems = [
   { label: "模型接入", icon: Plug, group: NAV_GROUP.system },
   { label: "企业设置", icon: Building2, group: NAV_GROUP.system },
   { label: "合同审查", icon: Scale, group: NAV_GROUP.system },
+  { label: "AI 人事", icon: Briefcase, group: NAV_GROUP.system },
 ];
 
 const STAGE_FLOW = ["新建", "跟进中", "已预约", "已成交"];
@@ -2305,6 +2311,10 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
           {activeNav === "企业设置" && <SettingsCenter />}
 
           {activeNav === "合同审查" && <ContractReview />}
+
+          {activeNav === "AI 会议" && <MeetingStudio />}
+
+          {activeNav === "AI 人事" && <HrStudio />}
 
           {activeNav === "AI 创作" && (
             <section className="studio-layout">

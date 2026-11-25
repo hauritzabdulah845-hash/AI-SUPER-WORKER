@@ -24,6 +24,8 @@ export const NAV_SLUGS: Record<string, string> = {
   模型接入: "channels",
   企业设置: "settings",
   合同审查: "contract",
+  "AI 会议": "meeting",
+  "AI 人事": "hr",
 };
 
 export const SLUG_NAV: Record<string, string> = Object.fromEntries(
