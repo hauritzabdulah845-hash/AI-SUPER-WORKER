@@ -9230,3 +9230,239 @@ ol.meeting-plain-list { list-style: decimal; }
 
 /* 第二十一批：常驻调度卡 */
 .pipeline-scheduler-error { margin: 10px 0 0; font-size: 12.5px; color: var(--danger-strong); line-height: 1.6; }
+
+/* ============================================================================
+   第二十三批：侧栏重组 + 总控改版（新样式一律用 index.css 设计令牌）
+   ============================================================================ */
+
+/* —— 侧栏搜索（固定区，不参与导航滚动） —— */
+.sidebar-nav-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  margin-top: var(--space-4);
+  padding: 0 var(--space-3);
+  min-height: 36px;
+  color: var(--ink-5);
+  background: var(--surface-muted);
+  border: 1px solid var(--ink-6);
+  border-radius: var(--radius-sm);
+}
+.sidebar-nav-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  color: var(--ink-2);
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-size: 12.5px;
+}
+.sidebar-nav-search input::placeholder { color: var(--ink-5); }
+.sidebar-nav-search button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  color: var(--ink-5);
+  background: none;
+  border: 0;
+  border-radius: 4px;
+}
+.sidebar-nav-search button:hover { color: var(--ink-2); }
+
+/* —— 导航项：主按钮 + 悬停星标 —— */
+.console-nav-item { position: relative; display: flex; align-items: center; }
+.console-nav-item > button:first-child { flex: 1; min-width: 0; }
+.console-nav .nav-star {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--ink-5);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity .15s, color .15s;
+}
+.console-nav-item:hover .nav-star,
+.console-nav .nav-star:focus-visible { opacity: 1; }
+.console-nav .nav-star.on { color: var(--warning); opacity: 1; }
+.console-nav .nav-star:hover { color: var(--warning-strong); background: var(--warning-soft); }
+/* 有计数徽标时星标让位，避免与徽标重叠 */
+.console-nav-item:has(.nav-count) .nav-star { right: 30px; }
+
+/* —— 分组折叠头 —— */
+.console-nav .console-nav-group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: calc(100% - 20px);
+  min-height: 0;
+  padding: 6px 0 4px;
+  color: var(--ink-5);
+  background: var(--surface);
+  border: 0;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .12em;
+  text-align: left;
+}
+.console-nav .console-nav-group-toggle:hover { color: var(--ink-3); background: var(--surface); }
+.group-chevron { transition: transform .18s ease; }
+.group-chevron.closed { transform: rotate(-90deg); }
+.nav-search-empty {
+  margin: 4px 10px;
+  color: var(--ink-5);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+/* —— 工作区可关闭横幅（原角标改为横幅，信息不变） —— */
+.workspace-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  color: var(--ink-3);
+  background: var(--surface-muted);
+  border: 1px solid var(--ink-6);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+}
+.workspace-banner > svg { flex: 0 0 auto; color: var(--ink-5); }
+.workspace-banner > span { flex: 1; }
+.workspace-banner button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 2px;
+  color: var(--ink-5);
+  background: none;
+  border: 0;
+  border-radius: 4px;
+}
+.workspace-banner button:hover { color: var(--ink-2); }
+
+/* —— 总控：指令输入区 —— */
+.overview-command-body { padding: var(--space-3) 19px 19px; }
+.overview-command-body textarea {
+  width: 100%;
+  padding: var(--space-3);
+  color: var(--ink-1);
+  background: var(--surface-muted);
+  border: 1px solid var(--ink-6);
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.overview-command-body textarea:focus {
+  border-color: var(--brand-mid);
+  outline: none;
+  background: var(--surface);
+}
+.overview-command-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.overview-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); flex: 1; }
+.overview-chips button {
+  padding: 6px 10px;
+  color: var(--ink-3);
+  background: var(--surface);
+  border: 1px solid var(--ink-6);
+  border-radius: 999px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-align: left;
+}
+.overview-chips button:hover { color: var(--brand-strong); border-color: var(--brand-mid); background: var(--brand-soft); }
+.overview-command-row .button-primary { flex: 0 0 auto; }
+
+/* —— 总控：待你处理 —— */
+.todo-card { margin-top: 13px; }
+.todo-list { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) 19px 19px; }
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  color: var(--ink-2);
+  background: var(--surface-muted);
+  border: 1px solid var(--ink-6);
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+.todo-item:hover { border-color: var(--brand-mid); background: var(--surface); }
+.todo-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+}
+.todo-warning { color: var(--warning-strong); background: var(--warning-soft); }
+.todo-danger { color: var(--danger-strong); background: var(--danger-soft); }
+.todo-text { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.todo-text strong { font-size: 13.5px; font-weight: 650; }
+.todo-text small { color: var(--ink-5); font-size: 12.5px; }
+.todo-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  color: var(--surface);
+  background: var(--brand);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+.todo-item > svg:last-child { flex: 0 0 auto; color: var(--ink-5); }
+
+/* —— 总控：空状态引导卡 —— */
+.overview-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4);
+  color: var(--ink-5);
+  text-align: center;
+}
+.overview-empty strong { color: var(--ink-2); font-size: 13.5px; }
+.overview-empty span { font-size: 12.5px; line-height: 1.6; }
+.overview-empty .button { margin-top: var(--space-2); }
+
+/* —— 总控：KPI 紧凑条 / 趋势图缩小 —— */
+.console-metrics.compact { margin-top: 13px; }
+.console-metrics.compact .console-metric { padding: 12px 14px; }
+.console-metrics.compact .console-metric > strong { margin: 6px 0 4px; font-size: 21px; }
+.console-metrics.compact .metric-icon { top: 12px; right: 12px; width: 30px; height: 30px; }
+.performance-card.compact { margin-top: 13px; }
+.performance-card.compact .line-chart { height: 150px; }
+.performance-card.compact .line-chart svg { height: 118px; }
+
+/* —— 窄屏：指令行与待处理不挤压 —— */
+@media (max-width: 760px) {
+  .overview-command-row { flex-direction: column; align-items: stretch; }
+  .overview-command-row .button-primary { justify-content: center; }
+  .console-metrics.compact .console-metric > strong { font-size: 19px; }
+}

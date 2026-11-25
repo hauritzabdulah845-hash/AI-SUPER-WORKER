@@ -77,5 +77,15 @@ check("即便视口较高也不影响（1024px 下仍不溢出侧栏）", fixedH
 check("移动端抽屉位移规则存在", /transform\s*:\s*translateX\(-100%\)/.test(css));
 check("移动端展开规则存在", /mobile-open\s*\{\s*transform\s*:\s*translateX\(0\)/.test(css));
 
+// —— 6. 第二十三批侧栏重组：26 项全可达 + 搜索/折叠/最近/收藏 ——
+check("导航项总数仍为 26（功能一个不删）", navLabels === 26, `${navLabels} 项`);
+check("分组数为 4（工作台/内容生产/获客转化/经营系统）", groups === 4, `${groups} 组`);
+check("侧栏搜索框存在", consoleSrc.includes("sidebar-nav-search") && consoleSrc.includes("搜索模块"));
+check("分组折叠状态存本机", consoleSrc.includes("ai-employee:sidebar-groups") && consoleSrc.includes("console-nav-group-toggle"));
+check("最近使用存本机", consoleSrc.includes("ai-employee:nav-recent"));
+check("收藏存本机且有星标入口", consoleSrc.includes("ai-employee:nav-favorites") && consoleSrc.includes("nav-star"));
+check("折叠头可访问性（aria-expanded）", consoleSrc.includes("aria-expanded={!collapsed}"));
+check("搜索/星标样式存在", css.includes(".sidebar-nav-search") && css.includes(".nav-star"));
+
 console.log(`\n${failed === 0 ? "全部通过" : `${failed} 项失败`}`);
 process.exit(failed === 0 ? 0 : 1);
