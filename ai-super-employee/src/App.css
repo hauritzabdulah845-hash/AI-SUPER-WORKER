@@ -9099,3 +9099,77 @@ button.console-search:hover { border-color: #8a78e4; }
   .geo-trend-row { gap: 12px; }
   .geo-trend-rate { font-size: 22px; }
 }
+
+/* 第十九批：企业设置 + 合同审查（字号守三级地板：正文 ≥12.5px，辅助 ≥11px） */
+.settings-page, .contract-page { display: flex; flex-direction: column; gap: 14px; }
+.settings-head, .contract-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 18px 19px; }
+.settings-head h2, .contract-head h2 { margin: 0 0 4px; font-size: 18px; display: flex; align-items: center; gap: 6px; }
+.settings-head p, .contract-head p { margin: 0; color: var(--muted-ink); font-size: 13px; line-height: 1.7; max-width: 760px; }
+.contract-head .contract-disclaimer { margin-top: 6px; font-size: 12.5px; color: #b42318; }
+.settings-stats { display: flex; gap: 8px; flex-wrap: wrap; }
+.settings-stats span { background: var(--purple-soft); color: var(--purple-dark); border-radius: 999px; padding: 4px 10px; font-size: 12.5px; font-weight: 600; }
+.settings-banner, .contract-banner { margin: 0; }
+.settings-notice, .contract-notice { margin: 0; color: #0f7b46; font-size: 12.5px; }
+.settings-body, .contract-body { padding: 14px 19px 18px; display: flex; flex-direction: column; gap: 12px; }
+.settings-actions, .contract-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.settings-search { font-size: 12.5px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; min-width: 160px; }
+.settings-form, .contract-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.settings-form label, .contract-form label, .contract-text { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: #4a4459; }
+.settings-form input, .settings-form select, .settings-form textarea,
+.contract-form input, .contract-form select, .contract-text textarea {
+  font-size: 12.5px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: #2d2c3f;
+}
+.settings-form textarea, .contract-text textarea { resize: vertical; line-height: 1.7; }
+.settings-form-wide { grid-column: 1 / -1; }
+.settings-form-actions { grid-column: 1 / -1; display: flex; gap: 10px; }
+.settings-member-list, .contract-history, .contract-plain-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.contract-plain-list { list-style: disc; padding-left: 18px; font-size: 12.5px; line-height: 1.7; }
+ol.contract-plain-list { list-style: decimal; }
+.settings-member-list li, .contract-history li {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px;
+}
+.settings-member-list li.disabled { opacity: .55; }
+.settings-member-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 160px; }
+.settings-member-info strong { display: flex; align-items: center; gap: 6px; color: #221e33; font-size: 13px; }
+.settings-member-info span { color: var(--muted-ink); font-size: 12.5px; }
+.settings-role-badge { background: var(--purple-soft); color: var(--purple-dark); border-radius: 999px; padding: 2px 8px; font-size: 11px; font-style: normal; font-weight: 600; }
+.settings-role-badge.muted { background: var(--off-white); color: var(--muted-ink); }
+.settings-context { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: #4a4459; }
+.settings-context pre {
+  margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--off-white);
+  font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; color: #2d2c3f;
+}
+.settings-table-wrap { overflow-x: auto; }
+.settings-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.settings-table th { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); font-size: 12.5px; color: #4a4459; }
+.settings-table td { padding: 8px; border-bottom: 1px solid var(--line); font-size: 12.5px; color: #2d2c3f; }
+.settings-table tr.disabled td { opacity: .55; }
+.settings-table input[type="number"] { width: 110px; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; }
+.settings-trial h3, .contract-subtitle { margin: 4px 0 0; font-size: 13.5px; color: #221e33; display: flex; align-items: center; gap: 6px; }
+.settings-trial-result { margin: 0; font-size: 12.5px; color: #4a4459; }
+.settings-trial-result strong { color: var(--purple-dark); font-size: 14px; }
+.settings-trial-result span { color: var(--muted-ink); font-size: 12.5px; }
+.contract-file-row { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.contract-char-count { color: var(--muted-ink); font-size: 12.5px; }
+.contract-risk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.contract-risk-list li { border: 1px solid var(--line); border-left-width: 3px; border-radius: 9px; padding: 11px 13px; }
+.contract-risk-list li.sev-高 { border-left-color: #dc2626; }
+.contract-risk-list li.sev-中 { border-left-color: #d97706; }
+.contract-risk-list li.sev-低 { border-left-color: #9c96a3; }
+.contract-risk-head { display: flex; align-items: center; gap: 8px; }
+.contract-risk-head strong { font-size: 13px; color: #221e33; }
+.contract-sev-badge { border-radius: 999px; padding: 2px 8px; font-size: 11px; font-style: normal; font-weight: 700; background: var(--off-white); color: #4a4459; }
+.sev-高 .contract-sev-badge { background: rgba(220, 38, 38, .1); color: #b42318; }
+.sev-中 .contract-sev-badge { background: rgba(217, 119, 6, .12); color: #b45309; }
+.contract-risk-list p { margin: 5px 0 0; font-size: 12.5px; line-height: 1.7; color: #4a4459; }
+.contract-risk-list .contract-clause { color: var(--muted-ink); font-size: 12.5px; }
+.contract-risk-list .contract-suggestion { color: #2d2c3f; }
+.contract-disclaimer { margin: 0; font-size: 12.5px; color: #b42318; line-height: 1.7; }
+.contract-history-time { color: var(--muted-ink); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.contract-history li strong { color: #221e33; }
+.contract-history li span { color: var(--muted-ink); }
+.contract-history li .text-link { margin-left: auto; }
+@media (max-width: 640px) {
+  .settings-form, .contract-form { grid-template-columns: 1fr; }
+}

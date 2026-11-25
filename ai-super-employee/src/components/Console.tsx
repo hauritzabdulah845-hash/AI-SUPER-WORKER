@@ -7,6 +7,7 @@ import {
   Bell,
   BookOpen,
   Bot,
+  Building2,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -46,6 +47,7 @@ import {
   RefreshCw,
   RotateCcw,
   Scissors,
+  Scale,
   ScrollText,
   Wand2,
   Search,
@@ -79,6 +81,8 @@ import { BundleCenter, type BundleSource } from "./BundleCenter";
 import { collectOfficeSources } from "../cloud/bundlecollect";
 import { DigitalStudio } from "./DigitalStudio";
 import { PublishHub } from "./PublishHub";
+import { SettingsCenter } from "./SettingsCenter";
+import { ContractReview } from "./ContractReview";
 import {
   clearArtworks,
   generateImage,
@@ -196,6 +200,8 @@ const navItems = [
   { label: "数字人工坊", icon: Mic, group: NAV_GROUP.content },
   { label: "AI 办公", icon: Presentation, group: NAV_GROUP.content },
   { label: "模型接入", icon: Plug, group: NAV_GROUP.system },
+  { label: "企业设置", icon: Building2, group: NAV_GROUP.system },
+  { label: "合同审查", icon: Scale, group: NAV_GROUP.system },
 ];
 
 const STAGE_FLOW = ["新建", "跟进中", "已预约", "已成交"];
@@ -2295,6 +2301,10 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
               <UsagePanel />
             </>
           )}
+
+          {activeNav === "企业设置" && <SettingsCenter />}
+
+          {activeNav === "合同审查" && <ContractReview />}
 
           {activeNav === "AI 创作" && (
             <section className="studio-layout">
