@@ -7,7 +7,7 @@ import os from "node:os";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { createService } from "../src/server.mjs";
-import { isDue, nextRunLabel, normalizeSchedule, todayAt } from "../src/schedule.mjs";
+import { isDue, nextRunLabel, normalizeSchedule, periodKey, todayAt } from "../src/schedule.mjs";
 
 const SECRET = "test-admin-secret";
 let failed = 0;
@@ -123,6 +123,24 @@ async function main() {
   check("normalizeSchedule 无 id 丢弃", normalizeSchedule({ name: "x" }) === null);
   check("normalizeSchedule 非法 time 夹紧", normalizeSchedule(plan({ time: "99:99" })).time === "23:59", normalizeSchedule(plan({ time: "99:99" })).time);
   check("normalizeSchedule 垃圾 time 回退", normalizeSchedule(plan({ time: "abc" })).time === "09:00");
+
+  // 10. 周期标识 + 回写去重（补跑防双跑）
+  // 第 8 节已把 pipe-2 的 lastRunAt 刷到 now 附近且同步保留最大值，改用新计划 pipe-9 验证
+  await postJson(port, "/api/schedules", {
+    schedules: [plan({ id: "pipe-9", name: "间隔扫描", mode: "interval", hours: 2, createdAt: now - 3 * 3_600_000, lastRunAt: null })],
+  }, auth);
+  const dueKey = await getJson(port, `/api/due?now=${now}`, auth);
+  const pipe2Due = (dueKey.body.due ?? []).find((row) => row.id === "pipe-9");
+  check("到期带 periodKey", Boolean(pipe2Due?.periodKey?.startsWith("interval:")), pipe2Due?.periodKey ?? "无");
+  check("periodKey 每日稳定", periodKey(plan(), now) === periodKey(plan(), now + 1000), periodKey(plan(), now));
+  check("periodKey 每日格式", /^daily:\d{4}-\d{2}-\d{2}@09:00$/.test(periodKey(plan(), now)), periodKey(plan(), now));
+  const keyA = pipe2Due.periodKey;
+  const first = await postJson(port, "/api/runs", { scheduleId: "pipe-9", at: now, status: "done", durationMs: 5, steps: [], periodKey: keyA }, auth);
+  check("带周期回写入账", first.body.ok === true && first.body.run.periodKey === keyA && !first.body.run.duplicate);
+  const second = await postJson(port, "/api/runs", { scheduleId: "pipe-9", at: now + 1000, status: "done", durationMs: 5, steps: [], periodKey: keyA }, auth);
+  check("同周期重复回写去重", second.body.run.duplicate === true && second.body.run.at === now, `at=${second.body.run?.at}`);
+  const third = await postJson(port, "/api/runs", { scheduleId: "pipe-9", at: now + 2000, status: "done", durationMs: 5, steps: [], periodKey: `${keyA}-next` }, auth);
+  check("不同周期正常入账", third.body.ok === true && !third.body.run.duplicate);
 
   server.close();
   console.log(`\n${failed === 0 ? "全部通过" : `${failed} 项失败`}`);

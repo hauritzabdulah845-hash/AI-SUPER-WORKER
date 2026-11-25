@@ -9229,6 +9229,7 @@ ol.meeting-plain-list { list-style: decimal; }
 
 /* 第二十一批：常驻调度卡 */
 .pipeline-scheduler-error { margin: 10px 0 0; font-size: 12.5px; color: var(--danger-strong); line-height: 1.6; }
+.pipeline-catchup-status { margin: 10px 0 0; font-size: 12.5px; color: var(--ink-4); line-height: 1.6; }
 
 /* ============================================================================
    第二十三批：侧栏重组 + 总控改版（新样式一律用 index.css 设计令牌）

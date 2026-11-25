@@ -13,6 +13,7 @@ import {
   type ContractReviewResult,
   type ContractStandpoint,
 } from "../cloud/contract";
+import { DOC_ACCEPT, extractDocumentText } from "../cloud/docparse";
 
 function downloadMarkdown(filename: string, content: string) {
   const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
@@ -42,7 +43,7 @@ async function copyText(text: string): Promise<boolean> {
 }
 
 /**
- * 合同审查：粘贴/读取 .txt 合同文本 → 风险清单 + 缺失条款 + 下一步。
+ * 合同审查：粘贴/读取合同文件（.txt/.md/.docx/.pdf）→ 风险清单 + 缺失条款 + 下一步。
  * 结论是 AI 初筛，不构成法律意见；留档只存摘要，不存合同全文。
  */
 export function ContractReview() {
@@ -55,22 +56,31 @@ export function ContractReview() {
   const [result, setResult] = useState<ContractReviewResult | null>(null);
   const [history, setHistory] = useState<ContractReviewRecord[]>(() => loadContractReviews());
 
+  const [parsing, setParsing] = useState(false);
+
   const readFile = async (file: File | undefined) => {
     if (!file) return;
+    setParsing(true);
     try {
-      const content = await file.text();
-      setText(content.slice(0, 60000));
-      if (!title.trim()) setTitle(file.name.replace(/\.txt$/i, ""));
-      setNotice(`已读取 ${file.name}（${content.length} 字）`);
+      const doc = await extractDocumentText(file);
+      setText(doc.text);
+      if (!title.trim()) setTitle(file.name.replace(/\.(txt|md|markdown|docx|pdf)$/i, ""));
+      setNotice(
+        doc.truncated
+          ? `已解析 ${file.name}（共 ${doc.totalChars} 字，取前 ${doc.text.length} 字）`
+          : `已解析 ${file.name}（${doc.text.length} 字）`,
+      );
       setError("");
-    } catch {
-      setError("文件读取失败，请确认是文本文件（.txt）");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "文件解析失败，请改用粘贴文本");
+    } finally {
+      setParsing(false);
     }
   };
 
   const runReview = async () => {
     if (!text.trim()) {
-      setError("请先粘贴合同文本，或读取一个 .txt 文件。");
+      setError("请先粘贴合同文本，或读取一个合同文件。");
       return;
     }
     setBusy(true);
@@ -110,7 +120,7 @@ export function ContractReview() {
         <div className="console-card-header">
           <div>
             <h2>输入合同</h2>
-            <p>支持直接粘贴，或读取 .txt 文件（正文最长取前 12000 字审查）</p>
+            <p>支持直接粘贴，或读取 .txt/.md/.docx/.pdf 文件（最大 5MB；正文最长取前 12000 字审查）</p>
           </div>
         </div>
         <div className="contract-body">
@@ -130,10 +140,10 @@ export function ContractReview() {
               </select>
             </label>
             <label className="contract-file">
-              <span>读取 .txt 文件</span>
+              <span>读取合同文件{parsing ? "（解析中…）" : ""}</span>
               <span className="contract-file-row">
-                <Upload size={14} />
-                <input type="file" accept=".txt,text/plain" onChange={(event) => void readFile(event.target.files?.[0])} />
+                {parsing ? <LoaderCircle size={14} className="spin" /> : <Upload size={14} />}
+                <input type="file" accept={DOC_ACCEPT} disabled={parsing} onChange={(event) => void readFile(event.target.files?.[0])} />
               </span>
             </label>
           </div>

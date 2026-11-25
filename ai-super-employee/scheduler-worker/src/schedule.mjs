@@ -80,6 +80,23 @@ export function dueSchedules(list, now) {
   return (Array.isArray(list) ? list : []).filter((row) => isDue(row, now));
 }
 
+/**
+ * 周期标识：同一计划同一触发周期只应执行一次，补跑去重靠它。
+ * - 每日：`daily:YYYY-MM-DD@HH:MM`（今天触发时刻的本地日期）
+ * - 间隔：`interval:<到期时刻时间戳>`（lastRunAt/createdAt + hours）
+ * 前端 src/cloud/catchup.ts 的 periodKeyOf 与此保持一致，改语义两边同步。
+ */
+export function periodKey(schedule, now) {
+  if (schedule.mode === "interval") {
+    const hours = Math.max(1, schedule.hours || 24);
+    const base = schedule.lastRunAt ?? schedule.createdAt;
+    return `interval:${base + hours * 3_600_000}`;
+  }
+  const trigger = new Date(todayAt(schedule.time, now));
+  const ymd = `${trigger.getFullYear()}-${String(trigger.getMonth() + 1).padStart(2, "0")}-${String(trigger.getDate()).padStart(2, "0")}`;
+  return `daily:${ymd}@${schedule.time}`;
+}
+
 /** 归一化一条计划（前端同步过来的形状与 pipeline.ts Pipeline 对齐，历史不收，只收调度字段）。 */
 export function normalizeSchedule(raw) {
   if (!raw || typeof raw !== "object") return null;
@@ -133,7 +150,8 @@ export function normalizeRun(raw) {
         detail: String(step?.detail ?? "").slice(0, 300),
       }))
     : [];
-  return { scheduleId, at, status, durationMs, steps };
+  const period = String(raw.periodKey ?? "").slice(0, 80);
+  return { scheduleId, at, status, durationMs, steps, periodKey: period };
 }
 
 function readJson(file, fallback) {
@@ -184,13 +202,25 @@ export function createScheduleStore(dataDir) {
   }
 
   function listDue(now) {
-    return dueSchedules(schedules, now).map((row) => ({ ...row, nextRunLabel: nextRunLabel(row, now) }));
+    return dueSchedules(schedules, now).map((row) => ({
+      ...row,
+      nextRunLabel: nextRunLabel(row, now),
+      periodKey: periodKey(row, now),
+    }));
   }
 
-  /** 前端执行后回写：追加运行记录并更新对应计划 lastRunAt。 */
+  /**
+   * 前端执行后回写：追加运行记录并更新对应计划 lastRunAt。
+   * 去重：带 periodKey 的回写若同计划同周期已有记录，直接返回既有记录
+   * 并标记 duplicate，不重复入账（防补跑与本地轮询双写）。
+   */
   function appendRun(raw) {
     const run = normalizeRun(raw);
     if (!run) return null;
+    if (run.periodKey) {
+      const existing = runs.find((row) => row.scheduleId === run.scheduleId && row.periodKey === run.periodKey);
+      if (existing) return { ...existing, duplicate: true };
+    }
     runs = [run, ...runs].slice(0, MAX_RUNS);
     saveRuns();
     const target = schedules.find((row) => row.id === run.scheduleId);

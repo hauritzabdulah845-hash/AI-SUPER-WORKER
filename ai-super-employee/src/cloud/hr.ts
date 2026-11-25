@@ -8,10 +8,10 @@ import { askLLM} from "./runner";
 * - 简历解析只基于简历原文，不编造学历/公司/经历；匹配分必须说明依据。
 * - 零 Key 降级：启发式抽取（技能词典、年限正则、姓名首行）+ 模板题库，demo 标注。
 * - 隐私：简历全文不留档，只存解析摘要；面试记录只存结论与评分摘要。
-* - 招聘平台直连后置，当前是粘贴文本版。
+* - 招聘平台直连后置，当前支持粘贴文本与本地文件（.txt/.md/.docx/.pdf，解析见 docparse.ts）。
 */
 
-export const HR_NOTE = "招聘平台直连后置，当前为粘贴文本版；解析结论仅供初筛，需面试核实。";
+export const HR_NOTE = "招聘平台直连后置，当前支持粘贴文本与本地文件（.txt/.md/.docx/.pdf）；解析结论仅供初筛，需面试核实。";
 
 function parseJson<T>(raw: string): T | null {
 const text = raw.replace(/```(?:json)?/g, "");

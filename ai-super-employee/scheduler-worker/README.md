@@ -33,8 +33,8 @@ node test/run-test.mjs               # 本地全链路自测
 - `GET /health` — 心跳（版本、运行时长、计划/启用/历史计数，无需鉴权）
 - `POST /api/schedules` — 整表同步计划 `{ schedules: [...] }`（前端是真源，worker 镜像调度字段并保留已回填的 `lastRunAt`）
 - `GET /api/schedules` — 读回已同步计划
-- `GET /api/due?now=` — 当前到期计划（`now` 可注入时间戳便于联调，缺省用服务器时间）
-- `POST /api/runs` — 前端执行后回写 `{ scheduleId, at, status, durationMs, steps }`
+- `GET /api/due?now=` — 当前到期计划（`now` 可注入时间戳便于联调，缺省用服务器时间），每条带 `periodKey` 周期标识
+- `POST /api/runs` — 前端执行后回写 `{ scheduleId, at, status, durationMs, steps, periodKey? }`；带 `periodKey` 时同计划同周期只入账一次（重复回写返回 `duplicate: true`）
 - `GET /api/runs?limit=` — 运行历史（上限 200）
 
 鉴权优先走请求头 `x-admin-secret`（密钥不进 URL），`?secret=` 兼容保留；常数时间比较。
@@ -45,6 +45,8 @@ node test/run-test.mjs               # 本地全链路自测
 - 到期语义与前端 `src/cloud/pipeline.ts` 的 `isDue` 完全对齐（每日 HH:MM 补跑一次、间隔满 N 小时、停用/空步骤不触发）。
   服务端在 `src/schedule.mjs` 重写了一份——**双份维护点**：改语义时两边同步改，并跑 `test:pipeline` 与本自测。
 - 前端对接代码：`src/cloud/scheduler.ts`（配置存本机 `ai-employee:scheduler`）。
+- 补跑编排在 `src/cloud/catchup.ts`：打开定时任务页先拉 due 补跑（单轮最多 5 条），
+  防双跑靠本地 `isDue` 复核 + 补跑标记 + 本服务的 `periodKey` 去重三层。
 
 ## 部署常驻（后续）
 

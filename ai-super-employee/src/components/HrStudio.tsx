@@ -25,6 +25,7 @@ import {
   type ResumeParse,
   type ResumeSummaryRecord,
 } from "../cloud/hr";
+import { DOC_ACCEPT, extractDocumentText } from "../cloud/docparse";
 
 function downloadMarkdown(filename: string, content: string) {
   const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
@@ -130,21 +131,30 @@ export function HrStudio() {
     setNotice(exists ? "岗位已更新" : "岗位已添加");
   };
 
+  const [resumeParsing, setResumeParsing] = useState(false);
+
   const readResumeFile = async (file: File | undefined) => {
     if (!file) return;
+    setResumeParsing(true);
     try {
-      const content = await file.text();
-      setResumeText(content.slice(0, 60000));
-      setNotice(`已读取 ${file.name}（${content.length} 字）`);
+      const doc = await extractDocumentText(file);
+      setResumeText(doc.text);
+      setNotice(
+        doc.truncated
+          ? `已解析 ${file.name}（共 ${doc.totalChars} 字，取前 ${doc.text.length} 字）`
+          : `已解析 ${file.name}（${doc.text.length} 字）`,
+      );
       setError("");
-    } catch {
-      setError("文件读取失败，请确认是文本文件（.txt）");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "文件解析失败，请改用粘贴文本");
+    } finally {
+      setResumeParsing(false);
     }
   };
 
   const runParse = async () => {
     if (!resumeText.trim()) {
-      setError("请先粘贴简历文本，或读取一个 .txt 文件。");
+      setError("请先粘贴简历文本，或读取一个简历文件。");
       return;
     }
     setParseBusy(true);
@@ -300,7 +310,7 @@ export function HrStudio() {
         <div className="console-card-header">
           <div>
             <h2>简历解析</h2>
-            <p>粘贴简历文本，按所选岗位给出匹配分与依据（简历全文不留档）</p>
+            <p>粘贴简历文本或读取 .txt/.md/.docx/.pdf 文件（最大 5MB），按所选岗位给出匹配分与依据（简历全文不留档）</p>
           </div>
         </div>
         <div className="hr-body">
@@ -315,10 +325,10 @@ export function HrStudio() {
               </select>
             </label>
             <label className="hr-file">
-              <span>读取 .txt 简历</span>
+              <span>读取简历文件{resumeParsing ? "（解析中…）" : ""}</span>
               <span className="hr-file-row">
-                <Upload size={14} />
-                <input type="file" accept=".txt,text/plain" onChange={(event) => void readResumeFile(event.target.files?.[0])} />
+                {resumeParsing ? <LoaderCircle size={14} className="spin" /> : <Upload size={14} />}
+                <input type="file" accept={DOC_ACCEPT} disabled={resumeParsing} onChange={(event) => void readResumeFile(event.target.files?.[0])} />
               </span>
             </label>
           </div>

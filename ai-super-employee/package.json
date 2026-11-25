@@ -30,7 +30,9 @@
     "test:contract": "tsx scripts/contract-check.ts",
     "test:meeting": "tsx scripts/meeting-check.ts",
     "test:hr": "tsx scripts/hr-check.ts",
-    "test:scheduler": "node scheduler-worker/test/run-test.mjs"
+    "test:scheduler": "node scheduler-worker/test/run-test.mjs",
+    "test:catchup": "tsx scripts/catchup-check.ts",
+    "test:docparse": "tsx scripts/docparse-check.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

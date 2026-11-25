@@ -20,12 +20,20 @@ import {
   checkHealth,
   loadSchedulerConfig,
   pullDue,
+  reportRun,
   saveSchedulerConfig,
   schedulerConfigured,
   syncSchedules,
   type SchedulerConfig,
   type SchedulerHealth,
 } from "../cloud/scheduler";
+import {
+  CATCHUP_MAX_PER_ROUND,
+  loadCatchupStatus,
+  periodKeyOf,
+  runCatchup,
+  type CatchupReport,
+} from "../cloud/catchup";
 
 const KIND_ORDER: PipelineStepKind[] = ["task", "geo", "video", "mixcut", "leads-scan"];
 
@@ -90,6 +98,8 @@ export function PipelineCenter() {
   const [schedDueCount, setSchedDueCount] = useState<number | null>(null);
   const [schedBusy, setSchedBusy] = useState(false);
   const [schedError, setSchedError] = useState("");
+  const [catchupStatus, setCatchupStatus] = useState<CatchupReport | null>(() => loadCatchupStatus());
+  const [catchupBusy, setCatchupBusy] = useState(false);
 
   const notify = useCallback((message: string) => {
     setToast(message);
@@ -118,7 +128,13 @@ export function PipelineCenter() {
           return;
         }
         const failed = run.steps.filter((step) => step.status === "failed").length;
-        const name = loadPipelines().find((row) => row.id === id)?.name ?? "流水线";
+        const pipelineRow = loadPipelines().find((row) => row.id === id);
+        const name = pipelineRow?.name ?? "流水线";
+        // 已配置常驻调度时顺手回写 worker（带周期标识去重），失败不打扰主流程
+        const config = loadSchedulerConfig();
+        if (schedulerConfigured(config) && pipelineRow) {
+          void reportRun(config, id, run, periodKeyOf(pipelineRow, run.at)).catch(() => undefined);
+        }
         notify(
           failed === 0
             ? `「${name}」执行完成（${run.steps.length} 步 · ${formatDuration(run.durationMs)}）`
@@ -134,21 +150,38 @@ export function PipelineCenter() {
     [notify, refresh],
   );
 
-  // 调度：打开立即检查一次（含补跑），之后每 30 秒轮询到点的流水线。
+  // 调度：打开先做一轮常驻调度补跑（已配置时），再启动本地 30 秒轮询。
+  // 补跑与轮询不并行启动；防双跑靠 catchup.ts 三层机制（本地 isDue 复核 +
+  // 补跑标记 + worker 周期去重），runPipelineById 另有进程内并发闸。
   useEffect(() => {
     let cancelled = false;
+    let timer: number | undefined;
     const tick = () => {
       if (cancelled) return;
       const due = loadPipelines().filter((row) => isDue(row, Date.now()));
       for (const pipeline of due) void runOne(pipeline.id, false);
     };
-    tick();
-    const timer = window.setInterval(tick, 30_000);
+    void (async () => {
+      const config = loadSchedulerConfig();
+      if (schedulerConfigured(config)) {
+        setCatchupBusy(true);
+        const report = await runCatchup(config).catch(() => null);
+        if (!cancelled && report) {
+          setCatchupStatus(report);
+          refresh();
+          if (report.ranIds.length) notify(`常驻调度补跑完成 ${report.ranIds.length} 条积压计划`);
+        }
+        if (!cancelled) setCatchupBusy(false);
+      }
+      if (cancelled) return;
+      tick();
+      timer = window.setInterval(tick, 30_000);
+    })();
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      if (timer !== undefined) window.clearInterval(timer);
     };
-  }, [runOne]);
+  }, [runOne, refresh, notify]);
 
   useEffect(() => () => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -244,6 +277,24 @@ export function PipelineCenter() {
     }
   };
 
+  const runCatchupNow = async () => {
+    setCatchupBusy(true);
+    setSchedError("");
+    try {
+      const report = await runCatchup(schedConfig);
+      setCatchupStatus(report);
+      refresh();
+      const due = await pullDue(schedConfig).catch(() => null);
+      if (due) setSchedDueCount(due.length);
+      if (report.error) setSchedError(`补跑失败：${report.error}`);
+      else notify(`补跑完成：执行 ${report.ranIds.length} 条，跳过 ${report.skippedCount} 条，积压剩余 ${report.remaining} 条`);
+    } catch (error) {
+      setSchedError(error instanceof Error ? error.message : "补跑失败");
+    } finally {
+      setCatchupBusy(false);
+    }
+  };
+
   return (
     <section className="pipeline-page">
       <div className="console-card pipeline-head">
@@ -279,7 +330,8 @@ export function PipelineCenter() {
           <div>
             <h2>常驻调度（骨架）</h2>
             <p>
-              把计划镜像到常驻 worker（scheduler-worker），关页面期间计划与历史不丢、到期可查。
+              把计划镜像到常驻 worker（scheduler-worker），关页面期间计划与历史不丢、到期积压。
+              打开本页时自动补跑积压（单轮最多 {CATCHUP_MAX_PER_ROUND} 条，防重复执行），跑完回写 worker。
               worker 只存计划、算到期、记历史，不代跑需登录态的任务；真 7×24 代跑需云端执行身份，后置。
             </p>
           </div>
@@ -316,6 +368,13 @@ export function PipelineCenter() {
           </label>
         </div>
         {schedError && <p className="pipeline-scheduler-error">{schedError}</p>}
+        <p className="pipeline-catchup-status">
+          {catchupBusy
+            ? "补跑进行中…"
+            : catchupStatus
+              ? `上次补跑 ${formatTime(catchupStatus.at)}：到期 ${catchupStatus.dueCount} · 执行 ${catchupStatus.ranIds.length} · 跳过 ${catchupStatus.skippedCount} · 积压剩余 ${catchupStatus.remaining}${catchupStatus.reportFailures ? ` · 回写失败 ${catchupStatus.reportFailures}` : ""}${catchupStatus.error ? ` · 失败：${catchupStatus.error}` : ""}`
+              : "尚未补跑（打开本页时自动执行一轮）"}
+        </p>
         <div className="pipeline-editor-actions">
           <button
             type="button"
@@ -325,6 +384,15 @@ export function PipelineCenter() {
           >
             {schedBusy ? <LoaderCircle size={15} className="spin" /> : <Play size={15} />}
             {schedBusy ? "同步中" : "同步计划"}
+          </button>
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => void runCatchupNow()}
+            disabled={catchupBusy || !schedulerConfigured(schedConfig)}
+          >
+            {catchupBusy ? <LoaderCircle size={15} className="spin" /> : <Clock3 size={15} />}
+            {catchupBusy ? "补跑中" : "立即补跑"}
           </button>
         </div>
       </div>

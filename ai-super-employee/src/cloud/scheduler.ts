@@ -101,8 +101,29 @@ export async function pullDue(config: SchedulerConfig): Promise<string[]> {
   return (payload.due ?? []).map((row) => row.id);
 }
 
-/** 前端执行后回写运行记录。 */
-export async function reportRun(config: SchedulerConfig, pipelineId: string, run: PipelineRun): Promise<void> {
+/** 到期计划条目（带周期标识，补跑去重用）。 */
+export interface DueItem {
+  id: string;
+  name?: string;
+  mode?: "daily" | "interval";
+  /** 周期标识：同计划同周期只执行一次（worker 计算，老版本可能缺失，前端本地兜底） */
+  periodKey?: string;
+  nextRunLabel?: string;
+}
+
+/** 拉取到期计划详情（含 periodKey），供补跑编排（catchup.ts）使用。 */
+export async function pullDueDetailed(config: SchedulerConfig): Promise<DueItem[]> {
+  const payload = await call<{ due?: DueItem[] }>(config, "/api/due");
+  return (payload.due ?? []).filter((row) => row && typeof row.id === "string");
+}
+
+/** 前端执行后回写运行记录；带 periodKey 时 worker 侧同周期去重。 */
+export async function reportRun(
+  config: SchedulerConfig,
+  pipelineId: string,
+  run: PipelineRun,
+  periodKey?: string,
+): Promise<void> {
   await call(config, "/api/runs", {
     method: "POST",
     body: JSON.stringify({
@@ -111,6 +132,7 @@ export async function reportRun(config: SchedulerConfig, pipelineId: string, run
       status: run.status,
       durationMs: run.durationMs,
       steps: run.steps,
+      ...(periodKey ? { periodKey } : {}),
     }),
   });
 }
