@@ -9,7 +9,14 @@
  */
 import { askLLM } from "./runner";
 import { loadChannel } from "./provider";
-import { analyzeAnswer, type GeoSnapshot, type MentionSample } from "./geotrack";
+import {
+  analyzeAnswer,
+  analyzeAnswerMulti,
+  buildCompetitorStats,
+  extractSources,
+  type GeoSnapshot,
+  type MentionSample,
+} from "./geotrack";
 
 const STORAGE_KEY = "supe-geo-snapshots";
 /** 最多保留 60 次快照（约每 3 天一次 = 半年），防止 localStorage 膨胀 */
@@ -41,6 +48,8 @@ export interface RunMonitorResult {
 export async function runGeoMonitor(input: {
   brand: string;
   questions: string[];
+  /** 可选竞品品牌（最多 3 个）：同一批问题同时测竞品提及（第 26 批） */
+  competitors?: string[];
   channel?: string;
   signal?: AbortSignal;
   onProgress?: (done: number, total: number, question: string) => void;
@@ -49,6 +58,7 @@ export async function runGeoMonitor(input: {
   if (!brand) throw new Error("请先填写品牌/企业名称，否则无法判断是否被提及。");
   const questions = input.questions.map((q) => q.trim()).filter(Boolean).slice(0, MAX_QUESTIONS);
   if (!questions.length) throw new Error("请至少填写 1 条测试问题。");
+  const competitors = [...new Set((input.competitors ?? []).map((c) => c.trim()).filter((c) => c && c !== brand))].slice(0, 3);
 
   const samples: MentionSample[] = [];
   const skipped: { question: string; reason: string }[] = [];
@@ -60,13 +70,22 @@ export async function runGeoMonitor(input: {
     try {
       const { text } = await askLLM(
         [
-          { role: "system", content: "你是一个客观的搜索问答助手，直接回答用户问题，不寒暄，60-120 字。" },
+          {
+            role: "system",
+            content: "你是一个客观的搜索问答助手，直接回答用户问题，不寒暄，60-120 字。回答末尾另起一行列出参考来源（站点/文章名/链接，如有），格式「来源：…」；没有可列的来源就写「来源：无」。",
+          },
           { role: "user", content: question },
         ],
         { signal: input.signal },
       );
       const signal = analyzeAnswer(text, brand);
-      samples.push({ question, ...signal });
+      const sample: MentionSample = { question, ...signal };
+      if (competitors.length) {
+        sample.competitors = analyzeAnswerMulti(text, competitors);
+      }
+      const sources = extractSources(text);
+      if (sources.length) sample.sources = sources;
+      samples.push(sample);
     } catch (err) {
       // 关键：不能把失败当成"未被提及"，否则趋势会被网络抖动作假
       skipped.push({ question, reason: err instanceof Error ? err.message : String(err) });
@@ -84,6 +103,10 @@ export async function runGeoMonitor(input: {
     questions: samples.map((s) => s.question),
     samples,
     channel: input.channel ?? currentChannelLabel(),
+    ...(competitors.length ? { competitors: buildCompetitorStats(samples, competitors) } : {}),
+    ...(samples.some((s) => s.sources?.length)
+      ? { sources: samples.map((s) => ({ question: s.question, sources: s.sources ?? [] })) }
+      : {}),
   };
 
   return { snapshot, skipped };

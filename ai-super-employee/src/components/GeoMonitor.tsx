@@ -12,11 +12,13 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import {
+  competitorComparison,
   computeTrend,
   mentionRate,
   pct,
   polylineAttr,
   questionDeltas,
+  sourceRanking,
   sparklinePoints,
   type GeoSnapshot,
 } from "../cloud/geotrack";
@@ -76,6 +78,8 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [expanded, setExpanded] = useState(false);
+  const [competitorText, setCompetitorText] = useState("");
+  const competitorList = competitorText.split(/[,，、\s]+/).map((item) => item.trim()).filter(Boolean).slice(0, 3);
 
   // 首刷放到 setTimeout：effect 内同步 setState 会触发 react-hooks 规则
   useEffect(() => {
@@ -90,6 +94,9 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
     () => (pair.current ? questionDeltas(pair.previous, pair.current) : []),
     [pair],
   );
+  const latest = history.length ? history[history.length - 1] : null;
+  const comparison = useMemo(() => (latest ? competitorComparison(latest) : []), [latest]);
+  const topSources = useMemo(() => sourceRanking(history), [history]);
 
   const runNow = async () => {
     if (!brand.trim()) { setError("请先填写品牌/企业名称。"); return; }
@@ -102,6 +109,7 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
       const { snapshot, skipped } = await runGeoMonitor({
         brand,
         questions,
+        competitors: competitorList,
         onProgress: (done, total, question) => setProgress(`第 ${done + 1}/${total} 条：${question.slice(0, 22)}`),
       });
       // 必须先落盘再更新 UI：只改 state 的话刷新页面记录就没了（典型漏写）
@@ -147,6 +155,11 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
         </button>
       </div>
 
+      <label className="geo-competitors">
+        竞品品牌（可选，最多 3 个，逗号分隔；同一批问题同时测竞品提及）
+        <input value={competitorText} onChange={(event) => setCompetitorText(event.target.value)} placeholder="例如：竞品甲, 竞品乙" />
+      </label>
+
       {busy && progress && <p className="geo-notice">{progress}</p>}
       {error && <p className="geo-error">{error}</p>}
       {notice && <p className="geo-notice">{notice}</p>}
@@ -172,6 +185,43 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
           </div>
 
           <p className="geo-trend-summary">{trend.summary}</p>
+
+          {comparison.length > 1 && (
+            <div className="geo-compare">
+              <h3>竞品对比（最新一次）</h3>
+              <table>
+                <thead><tr><th>品牌</th><th>提及率</th><th>平均首位</th><th>与本品牌差</th><th>名次</th></tr></thead>
+                <tbody>
+                  {comparison.map((row) => (
+                    <tr key={row.brand} className={row.isSelf ? "self" : ""}>
+                      <td>{row.brand}{row.isSelf ? "（本品牌）" : ""}</td>
+                      <td>{pct(row.mentionRate)}</td>
+                      <td>{row.firstPos === null ? "—" : Math.round(row.firstPos)}</td>
+                      <td>
+                        {row.isSelf ? "—" : (
+                          <span className={row.deltaRate > 0 ? "geo-delta-up" : row.deltaRate < 0 ? "geo-delta-down" : ""}>
+                            {row.deltaRate > 0 ? "▲" : row.deltaRate < 0 ? "▼" : "—"} {Math.abs(row.deltaRate * 100).toFixed(0)} 个百分点
+                          </span>
+                        )}
+                      </td>
+                      <td>第 {row.rank} 名</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {topSources.length > 0 && (
+            <div className="geo-sources">
+              <h3>被引用信源 TOP</h3>
+              <ol>
+                {topSources.map((row) => (
+                  <li key={row.source}><span>{row.source}</span><small>{row.count} 次</small></li>
+                ))}
+              </ol>
+            </div>
+          )}
 
           {trend.direction === "insufficient" && (
             <p className="geo-hint">再跑一次即可形成趋势对比。单次结果无法判断涨跌。</p>

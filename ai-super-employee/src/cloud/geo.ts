@@ -1,4 +1,5 @@
 import { askLLM } from "./runner";
+import { extractSources } from "./geotrack";
 
 /**
  * GEO（Generative Engine Optimization）能力层：
@@ -44,6 +45,8 @@ export interface GeoMentionTest {
   question: string;
   answer: string;
   mentioned: boolean;
+  /** 可选（第 26 批新增）：模型在回答末尾给出的参考来源，无来源时为空数组 */
+  sources?: string[];
 }
 
 /** 从 LLM 回复里稳健地抠出 JSON（模型偶尔会包一层说明文字或代码围栏）。 */
@@ -210,7 +213,7 @@ export async function testBrandMention(input: {
       [
         {
           role: "system",
-          content: "你是一个客观的搜索问答助手，直接回答用户问题，不寒暄，60-120 字。",
+          content: "你是一个客观的搜索问答助手，直接回答用户问题，不寒暄，60-120 字。回答末尾另起一行列出参考来源（站点/文章名/链接，如有），格式「来源：…」；没有可列的来源就写「来源：无」。",
         },
         { role: "user", content: question },
       ],
@@ -220,6 +223,7 @@ export async function testBrandMention(input: {
       question,
       answer: text.slice(0, 400),
       mentioned: text.toLowerCase().includes(brand.toLowerCase()),
+      sources: extractSources(text),
     });
   }
   return results;
@@ -400,9 +404,10 @@ export function geoMarkdown(input: {
   if (input.tests?.length) {
     const hit = input.tests.filter((item) => item.mentioned).length;
     lines.push(`## 提及率测试（${hit}/${input.tests.length}）`, "");
-    input.tests.forEach((item) =>
-      lines.push(`- ${item.mentioned ? "✅" : "❌"} ${item.question}`, "", `  > ${item.answer.replace(/\n/g, " ")}`, ""),
-    );
+    input.tests.forEach((item) => {
+      lines.push(`- ${item.mentioned ? "✅" : "❌"} ${item.question}`, "", `  > ${item.answer.replace(/\n/g, " ")}`);
+      lines.push(`  > 来源：${item.sources?.length ? item.sources.join("、") : "模型未给出处"}`, "");
+    });
   }
 
   return lines.join("\n");

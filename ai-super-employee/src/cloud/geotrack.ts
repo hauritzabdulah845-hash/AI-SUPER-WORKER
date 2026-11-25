@@ -8,6 +8,15 @@
  * 这里只做「快照 → 序列 → 趋势」的纯计算；存储与网络在 geotrack.ts。
  */
 
+/** 单次监测里、单个品牌在某条回答中的提及信号（竞品用） */
+export interface BrandSignal {
+  brand: string;
+  mentioned: boolean;
+  hits: number;
+  /** 品牌在回答中的首个字符位置；-1 表示未出现 */
+  firstPos: number;
+}
+
 /** 单次监测里、单条问题的结果 */
 export interface MentionSample {
   question: string;
@@ -18,6 +27,19 @@ export interface MentionSample {
   firstPos: number;
   /** 回答字数，用于判断模型是否敷衍 */
   answerLength: number;
+  /** 可选（第 26 批新增）：同一回答里各竞品的提及信号，旧快照无此字段 */
+  competitors?: BrandSignal[];
+  /** 可选（第 26 批新增）：模型在回答末尾给出的参考来源，旧快照无此字段 */
+  sources?: string[];
+}
+
+/** 快照级竞品汇总（第 26 批新增，向后兼容的可选字段） */
+export interface CompetitorStat {
+  brand: string;
+  /** 该竞品在本轮问题集中的提及率 0~1 */
+  mentionRate: number;
+  /** 该竞品命中回答的平均首次位置；无命中为 null */
+  firstPos: number | null;
 }
 
 /** 一次完整监测的快照 */
@@ -31,6 +53,10 @@ export interface GeoSnapshot {
   samples: MentionSample[];
   /** 通道标识，例如 "demo" / "deepseek"：换通道后趋势不可直接比 */
   channel: string;
+  /** 可选（第 26 批新增）：本轮竞品汇总，旧快照无此字段时报表降级为只看本品牌 */
+  competitors?: CompetitorStat[];
+  /** 可选（第 26 批新增）：按问题存的模型参考来源，旧快照无此字段 */
+  sources?: { question: string; sources: string[] }[];
 }
 
 /** 单次提及率（0~1） */
@@ -214,4 +240,153 @@ export function analyzeAnswer(answer: string, brand: string): Omit<MentionSample
     from = idx + needle.length;
   }
   return { mentioned: hits > 0, hits, firstPos, answerLength: answer.length };
+}
+
+/* ------------------------------------------------------------------ */
+/* 第 26 批：竞品对比 + 引用来源（借鉴抓词 GEO 的监测维度）            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 多品牌分析：同一条回答同时测本品牌与竞品。
+ * 复用 analyzeAnswer 的归一化口径，保证本品牌与竞品同尺子。
+ */
+export function analyzeAnswerMulti(answer: string, brands: string[]): BrandSignal[] {
+  const seen = new Set<string>();
+  const out: BrandSignal[] = [];
+  for (const raw of brands) {
+    const brand = raw.trim();
+    if (!brand) continue;
+    const key = brand.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const signal = analyzeAnswer(answer, brand);
+    out.push({ brand, mentioned: signal.mentioned, hits: signal.hits, firstPos: signal.firstPos });
+  }
+  return out;
+}
+
+/** 从样本汇总竞品快照级统计（提及率 + 平均首次位置）。 */
+export function buildCompetitorStats(samples: MentionSample[], competitorBrands: string[]): CompetitorStat[] {
+  const brands = [...new Set(competitorBrands.map((b) => b.trim()).filter(Boolean))].slice(0, 3);
+  return brands.map((brand) => {
+    const signals = samples.flatMap((s) => (s.competitors ?? []).filter((c) => c.brand === brand));
+    const hit = signals.filter((c) => c.mentioned && c.firstPos >= 0);
+    return {
+      brand,
+      mentionRate: samples.length ? signals.filter((c) => c.mentioned).length / samples.length : 0,
+      firstPos: hit.length ? hit.reduce((sum, c) => sum + c.firstPos, 0) / hit.length : null,
+    };
+  });
+}
+
+export interface CompetitorRow {
+  brand: string;
+  isSelf: boolean;
+  mentionRate: number;
+  firstPos: number | null;
+  /** 与本品牌的提及率差值（本品牌行恒为 0） */
+  deltaRate: number;
+  /** 按提及率降序的名次（1 起，并列同名次取先出现） */
+  rank: number;
+}
+
+/**
+ * 竞品对比表：本品牌 vs 竞品的提及率/首位位置差值与排名。
+ * 旧快照没有 competitors 字段时只返回本品牌一行（报表降级，不报错）。
+ */
+export function competitorComparison(snapshot: GeoSnapshot): CompetitorRow[] {
+  const selfRate = mentionRate(snapshot);
+  const rows: CompetitorRow[] = [
+    { brand: snapshot.brand, isSelf: true, mentionRate: selfRate, firstPos: avgFirstPos(snapshot), deltaRate: 0, rank: 1 },
+    ...(snapshot.competitors ?? []).map((c) => ({
+      brand: c.brand,
+      isSelf: false,
+      mentionRate: c.mentionRate,
+      firstPos: c.firstPos,
+      deltaRate: c.mentionRate - selfRate,
+      rank: 1,
+    })),
+  ];
+  const sorted = [...rows].sort((a, b) => b.mentionRate - a.mentionRate);
+  sorted.forEach((row, index) => { row.rank = index + 1; });
+  // 展示顺序：本品牌置顶，其余按提及率降序（rank 已按全局序算好）
+  return [rows[0], ...sorted.filter((row) => !row.isSelf)];
+}
+
+/** 多品牌提及率序列（趋势对比）：brand 为本品牌时等价于 rateSeries。 */
+export function rateSeriesFor(snapshots: GeoSnapshot[], brand: string): number[] {
+  return [...snapshots]
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+    .map((snapshot) => {
+      if (brand === snapshot.brand) return mentionRate(snapshot);
+      return snapshot.competitors?.find((c) => c.brand === brand)?.mentionRate ?? 0;
+    });
+}
+
+const SOURCE_URL_RE = /https?:\/\/[^\s<>"'）)】]+/gi;
+const SOURCE_SECTION_RE = /(?:参考来源|参考资料|来源|出处|引用来源)\s*[：:]\s*([^\n]+(?:\n[^\n]+)*)/i;
+
+/**
+ * 从模型回答里解析参考来源：URL 提取 + 「来源：」段落解析。
+ * 无来源返回空数组（调用方如实标注「模型未给出处」，不编造）。
+ */
+export function extractSources(answer: string, max = 8): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (value: string) => {
+    const cleaned = value.trim().replace(/[。；;，,]+$/u, "").slice(0, 120);
+    if (!cleaned || cleaned === "无") return;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(cleaned);
+  };
+
+  for (const match of answer.match(SOURCE_URL_RE) ?? []) push(match.replace(/[）)】]+$/u, ""));
+
+  const section = answer.match(SOURCE_SECTION_RE);
+  if (section) {
+    for (const part of section[1].split(/[、,，;；\n]/)) {
+      // 去掉序号/项目符号前缀，URL 已在上一步收过则去重
+      push(part.replace(/^\s*(?:[-*•·]|\d+[.、)])\s*/u, ""));
+    }
+  }
+  return out.slice(0, max);
+}
+
+/** 来源归并键：URL 取域名，纯文本取去空白小写。 */
+export function sourceKey(source: string): string {
+  const urlMatch = source.match(/https?:\/\/([^/\s]+)/i);
+  if (urlMatch) return urlMatch[1].toLowerCase().replace(/^www\./, "");
+  return source.trim().toLowerCase().replace(/[\s\u3000]+/g, "");
+}
+
+export interface SourceRankRow {
+  source: string;
+  count: number;
+}
+
+/**
+ * 被引用信源 TOP：跨快照统计来源出现次数（按域名/名称归并）。
+ * 优先读快照级 sources，旧结构回退到样本级 sources；都没有则返回空。
+ */
+export function sourceRanking(snapshots: GeoSnapshot[], top = 10): SourceRankRow[] {
+  const counts = new Map<string, { source: string; count: number }>();
+  const add = (source: string) => {
+    const key = sourceKey(source);
+    if (!key) return;
+    const row = counts.get(key) ?? { source: source.trim(), count: 0 };
+    row.count += 1;
+    counts.set(key, row);
+  };
+  for (const snapshot of snapshots) {
+    if (snapshot.sources?.length) {
+      for (const item of snapshot.sources) for (const source of item.sources) add(source);
+    } else {
+      for (const sample of snapshot.samples) for (const source of sample.sources ?? []) add(source);
+    }
+  }
+  return [...counts.values()]
+    .sort((a, b) => b.count - a.count || a.source.localeCompare(b.source))
+    .slice(0, top);
 }

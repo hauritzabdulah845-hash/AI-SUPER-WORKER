@@ -15,9 +15,21 @@ import {
   generateGeoAssets,
   geoMarkdown,
   runGeoAudit,
+  testBrandMention,
   type GeoAssetBundle,
   type GeoAuditResult,
+  type GeoMentionTest,
 } from "../cloud/geo";
+import {
+  expandKeywords,
+  generateTopics,
+  groupStats,
+  parseSeedWords,
+  topicsMarkdown,
+  type GeoExpandResult,
+  type GeoTopic,
+} from "../cloud/geokeywords";
+import { navToSlug } from "../nav";
 import { getKnowledgeDoc, type KnowledgeRow } from "../cloud/api";
 import { GeoMonitor } from "./GeoMonitor";
 import { MAX_QUESTIONS } from "../cloud/geomonitor";
@@ -63,11 +75,16 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
   const [material, setMaterial] = useState("");
   const [materialNote, setMaterialNote] = useState("");
   const [questionsText, setQuestionsText] = useState("");
-  const [busy, setBusy] = useState<"" | "load" | "audit" | "assets" | "test">("");
+  const [busy, setBusy] = useState<"" | "load" | "audit" | "assets" | "test" | "expand" | "topics">("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [audit, setAudit] = useState<GeoAuditResult | null>(null);
   const [assets, setAssets] = useState<GeoAssetBundle | null>(null);
+  const [seedText, setSeedText] = useState("");
+  const [expanded, setExpanded] = useState<GeoExpandResult | null>(null);
+  const [topics, setTopics] = useState<GeoTopic[]>([]);
+  const [topicsDemo, setTopicsDemo] = useState(false);
+  const [mentionTests, setMentionTests] = useState<GeoMentionTest[]>([]);
 
   const loadFromKnowledge = async () => {
     if (!knowledge.length) {
@@ -126,6 +143,72 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
     }
   };
 
+
+  const runExpand = async () => {
+    setBusy("expand");
+    setError("");
+    setNotice("");
+    try {
+      const seeds = parseSeedWords(seedText || keywords);
+      const result = await expandKeywords({ brand, seedWords: seeds });
+      setExpanded(result);
+      setTopics([]);
+      setNotice(`拓词完成：${result.keywords.length} 条长尾词${result.demo ? "（模板降级演示）" : ""}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "拓词失败");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const runTopics = async () => {
+    if (!expanded?.keywords.length) { setError("请先拓词，再生成选题。"); return; }
+    setBusy("topics");
+    setError("");
+    setNotice("");
+    try {
+      const result = await generateTopics({ brand, keywords: expanded.keywords });
+      setTopics(result.topics);
+      setTopicsDemo(result.demo);
+      setNotice(`选题已生成：${result.topics.length} 条${result.demo ? "（模板降级演示）" : ""}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "选题生成失败");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  /** 把选题的目标问题一键填入监测问题集（选题→监测闭环）。 */
+  const topicsToQuestions = () => {
+    const lines = topics.map((topic) => topic.targetQuestion).filter(Boolean);
+    if (!lines.length) { setError("选题还没有目标问题，先生成选题。"); return; }
+    setQuestionsText(lines.join("\n"));
+    setNotice(`已把 ${lines.length} 条选题目标问题填入监测问题集`);
+  };
+
+  /** 把高优先级长尾词回填为目标搜索词，再走现有素材生成。 */
+  const keywordsToAssets = () => {
+    const high = (expanded?.keywords ?? []).filter((item) => item.priority === "高").slice(0, 5);
+    if (!high.length) { setError("暂无高优先级词，先拓词。"); return; }
+    setKeywords(high.map((item) => item.word).join(", "));
+    setNotice("高优先级词已回填为目标搜索词，点「生成 GEO 素材」继续");
+  };
+
+  const runMentionTest = async () => {
+    setBusy("test");
+    setError("");
+    setNotice("");
+    try {
+      const results = await testBrandMention({ brand, questions: questionList });
+      setMentionTests(results);
+      const hit = results.filter((item) => item.mentioned).length;
+      setNotice(`提及测试完成：${hit}/${results.length} 条命中`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "提及测试失败");
+    } finally {
+      setBusy("");
+    }
+  };
 
   const exportAll = () => {
     downloadMarkdown(
@@ -266,6 +349,75 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
         </div>
       )}
 
+      <div className="console-card geo-keywords-card">
+        <div className="console-card-header">
+          <div>
+            <h2><Target size={15} /> 拓词与选题</h2>
+            <p>种子词 → 长尾词（按咨询/选型/对比/教程/避坑分组）→ 选题大纲。借鉴抓词 GEO 的生产侧打法：先摸清「用户会问什么」，再决定写什么。</p>
+          </div>
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => downloadMarkdown(`GEO选题-${new Date().toISOString().slice(0, 10)}.md`, topicsMarkdown({ brand, topics, demo: topicsDemo }))}
+            disabled={!topics.length}
+          >
+            <Download size={14} />导出选题
+          </button>
+        </div>
+        <label className="geo-questions">
+          种子词（逗号分隔，留空则用上方目标搜索词）
+          <input value={seedText} onChange={(event) => setSeedText(event.target.value)} placeholder="例如：现煮茶饮, 下午茶" />
+        </label>
+        <div className="geo-actions">
+          <button type="button" className="button button-primary" onClick={() => void runExpand()} disabled={busy !== ""}>
+            {busy === "expand" ? <LoaderCircle size={15} className="spin" /> : <Sparkles size={15} />}拓词
+          </button>
+          <button type="button" className="button button-secondary" onClick={() => void runTopics()} disabled={busy !== "" || !expanded?.keywords.length}>
+            {busy === "topics" ? <LoaderCircle size={15} className="spin" /> : <FileText size={15} />}生成选题
+          </button>
+          <button type="button" className="text-link" onClick={keywordsToAssets} disabled={!expanded?.keywords.length}>
+            高优先级词回填素材生成
+          </button>
+          <button type="button" className="text-link" onClick={() => { window.location.hash = `#/console/${navToSlug("内容工厂")}`; }}>
+            去内容工厂生产
+          </button>
+        </div>
+        {expanded && (
+          <div className="geo-keyword-groups">
+            {groupStats(expanded.groups).map((stat) => {
+              const group = expanded.groups.find((item) => item.intent === stat.intent);
+              if (!group?.keywords.length) return null;
+              return (
+                <div className="geo-keyword-group" key={stat.intent}>
+                  <h3>{stat.intent}（{stat.count} 条{stat.high ? ` · 高优先级 ${stat.high}` : ""}）</h3>
+                  <div>
+                    {group.keywords.map((item) => (
+                      <span key={item.word} className={item.priority === "高" ? "geo-kw high" : "geo-kw"}>{item.word}</span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {expanded.demo && <p className="geo-hint">本次为模板降级演示（模型不可用），词表仅作占位，请人工校准。</p>}
+          </div>
+        )}
+        {topics.length > 0 && (
+          <div className="geo-topics">
+            <div className="geo-topics-head">
+              <h3>选题大纲（{topics.length} 条{topicsDemo ? " · 模板降级演示" : ""}）</h3>
+              <button type="button" className="text-link" onClick={topicsToQuestions}>目标问题填入监测问题集</button>
+            </div>
+            {topics.map((topic, index) => (
+              <div className="geo-topic-item" key={`${topic.title}-${index}`}>
+                <strong>{index + 1}. {topic.title}</strong>
+                <small>目标问题：{topic.targetQuestion || "—"}</small>
+                <ul>{topic.sections.map((section) => <li key={section}>{section}</li>)}</ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="console-card geo-questions-card">
         <div className="console-card-header">
           <div>
@@ -292,6 +444,22 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
         <small className="geo-hint">
           共 {questionList.length} 条{questionList.length > MAX_QUESTIONS ? `（本次只用前 ${MAX_QUESTIONS} 条）` : ""}
         </small>
+        <div className="geo-actions">
+          <button type="button" className="button button-secondary" onClick={() => void runMentionTest()} disabled={busy !== ""}>
+            {busy === "test" ? <LoaderCircle size={15} className="spin" /> : <TestTube2 size={15} />}快速提及测试（含来源）
+          </button>
+        </div>
+        {mentionTests.length > 0 && (
+          <div className="geo-mention-results">
+            {mentionTests.map((item, index) => (
+              <div className="geo-mention-item" key={`${item.question}-${index}`}>
+                <strong>{item.mentioned ? "✅" : "❌"} {item.question}</strong>
+                <p>{item.answer}</p>
+                <small>来源：{item.sources?.length ? item.sources.join("、") : "模型未给出处"}</small>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <GeoMonitor brand={brand} questions={questionList} />

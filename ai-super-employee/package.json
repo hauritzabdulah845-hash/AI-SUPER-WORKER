@@ -32,7 +32,9 @@
     "test:hr": "tsx scripts/hr-check.ts",
     "test:scheduler": "node scheduler-worker/test/run-test.mjs",
     "test:catchup": "tsx scripts/catchup-check.ts",
-    "test:docparse": "tsx scripts/docparse-check.ts"
+    "test:docparse": "tsx scripts/docparse-check.ts",
+    "test:geokeywords": "tsx scripts/geokeywords-check.ts",
+    "test:geocompare": "tsx scripts/geocompare-check.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

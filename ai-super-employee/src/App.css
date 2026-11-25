@@ -9489,3 +9489,37 @@ ol.meeting-plain-list { list-style: decimal; }
 @media (max-width: 860px) {
   .agent-strip { grid-template-columns: 1fr; gap: var(--space-5); }
 }
+
+/* ===== 第二十六批：GEO 拓词选题 / 竞品对比 / 引用来源 ===== */
+.geo-keywords-card .geo-questions input { width: 100%; box-sizing: border-box; }
+.geo-keyword-groups { display: grid; gap: var(--space-4); margin-top: var(--space-4); }
+.geo-keyword-group h3 { margin: 0 0 var(--space-2); color: var(--ink-2); font-size: 13.5px; }
+.geo-keyword-group > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.geo-kw { padding: 3px 9px; background: var(--surface-muted); border: 1px solid var(--line); border-radius: 999px; color: var(--ink-3); font-size: 12.5px; }
+.geo-kw.high { background: var(--brand-soft); border-color: var(--brand-mid); color: var(--brand-strong); font-weight: 650; }
+.geo-topics { display: grid; gap: var(--space-3); margin-top: var(--space-4); }
+.geo-topics-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.geo-topics-head h3 { margin: 0; color: var(--ink-2); font-size: 13.5px; }
+.geo-topic-item { padding: var(--space-3); background: var(--surface-muted); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.geo-topic-item strong { display: block; color: var(--ink-2); font-size: 13.5px; }
+.geo-topic-item small { display: block; margin-top: 2px; color: var(--ink-5); font-size: 12.5px; }
+.geo-topic-item ul { margin: var(--space-2) 0 0; padding-left: 18px; color: var(--ink-3); font-size: 12.5px; line-height: 1.7; }
+.geo-mention-results { display: grid; gap: var(--space-3); margin-top: var(--space-3); }
+.geo-mention-item { padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.geo-mention-item strong { color: var(--ink-2); font-size: 13.5px; }
+.geo-mention-item p { margin: var(--space-2) 0; color: var(--ink-3); font-size: 12.5px; line-height: 1.7; }
+.geo-mention-item small { color: var(--ink-5); font-size: 11px; }
+.geo-competitors { display: grid; gap: 6px; margin: var(--space-3) 0; color: var(--ink-3); font-size: 12.5px; }
+.geo-competitors input { padding: 9px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--ink-2); font-size: 13.5px; }
+.geo-compare, .geo-sources { margin: 0 0 var(--space-4); }
+.geo-compare h3, .geo-sources h3 { margin: 0 0 var(--space-2); color: var(--ink-2); font-size: 13.5px; }
+.geo-compare table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.geo-compare th { padding: 6px 8px; text-align: left; color: var(--ink-5); font-size: 11px; border-bottom: 1px solid var(--line); }
+.geo-compare td { padding: 6px 8px; color: var(--ink-3); border-bottom: 1px solid var(--ink-6); }
+.geo-compare tr.self td { background: var(--brand-soft); color: var(--ink-2); font-weight: 650; }
+.geo-delta-up { color: var(--danger-strong); }
+.geo-delta-down { color: var(--success-strong); }
+.geo-sources ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.geo-sources li { color: var(--ink-3); font-size: 12.5px; }
+.geo-sources li span { margin-right: var(--space-2); }
+.geo-sources li small { color: var(--ink-5); font-size: 11px; }
