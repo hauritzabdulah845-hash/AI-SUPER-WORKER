@@ -53,7 +53,7 @@ echo.
 rem ---------- wait for the dev server to be ready, then open the browser ----------
 start "" powershell -NoProfile -WindowStyle Hidden -Command "for($i=0;$i -lt 60;$i++){try{$r=Invoke-WebRequest -Uri 'http://127.0.0.1:5173/' -UseBasicParsing -TimeoutSec 2;if($r.StatusCode -eq 200){Start-Process 'http://localhost:5173/';break}}catch{Start-Sleep -Seconds 1}}"
 
-call "%NPM_CMD%" run dev -- --host 127.0.0.1 --port 5173
+call "%NPM_CMD%" run dev -- --host :: --port 5173
 
 echo.
 echo [Stop] Dev server exited.
