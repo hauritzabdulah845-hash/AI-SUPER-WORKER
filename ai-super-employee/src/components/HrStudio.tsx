@@ -325,13 +325,16 @@ export function HrStudio() {
                 ))}
               </select>
             </label>
-            <label className="hr-file">
+            <div className="hr-file">
               <span>读取简历文件{resumeParsing ? "（解析中…）" : ""}</span>
               <span className="hr-file-row">
                 {resumeParsing ? <LoaderCircle size={14} className="spin" /> : <Upload size={14} />}
-                <input type="file" accept={DOC_ACCEPT} disabled={resumeParsing} onChange={(event) => void readResumeFile(event.target.files?.[0])} />
+                <label className="button button-secondary file-pick">
+                  选择文件
+                  <input type="file" accept={DOC_ACCEPT} hidden disabled={resumeParsing} onChange={(event) => void readResumeFile(event.target.files?.[0])} />
+                </label>
               </span>
-            </label>
+            </div>
           </div>
           <label className="hr-text">
             <span>简历文本 *</span>
@@ -448,7 +451,7 @@ export function HrStudio() {
                       <td>{row.jobTitle}</td>
                       <td>{row.score}</td>
                       <td>{row.verdict}</td>
-                      <td>{row.notes}</td>
+                      <td><span className="hr-note-cell" title={row.notes}>{row.notes}</span></td>
                       <td>
                         <button type="button" className="text-link" onClick={() => removeInterview(row.id)}>
                           <Trash2 size={13} />

@@ -103,7 +103,7 @@ function Step({ index, title, where, open, done, onToggle, onDone, children }: S
         <span className="wo-step-no">{done ? <Check size={13} /> : index}</span>
         <span className="wo-step-title">
           <strong>{title}</strong>
-          <small>{where}</small>
+          <small title={where}>{where}</small>
         </span>
         <span className={`wo-step-state${done ? " done" : ""}`}>{done ? "已完成" : "待完成"}</span>
         <ChevronDown className="wo-step-caret" size={15} />

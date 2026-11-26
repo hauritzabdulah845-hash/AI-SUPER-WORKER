@@ -992,7 +992,7 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
               {reviewQueue.map((item) => (
                 <li className="geo-review-row" key={item.id}>
                   <div className="geo-review-main">
-                    <strong>{item.title}</strong>
+                    <strong title={item.title}>{item.title}</strong>
                     <span className={`geo-review-status st-${item.status}`}>{DRAFT_STATUS_LABEL[item.status]}</span>
                     <small>{item.kind === "assets" ? "GEO 素材稿" : item.kind === "platform" ? "平台稿" : "手工稿"} · {new Date(item.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}</small>
                   </div>
@@ -1032,7 +1032,7 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
                         <button type="button" className="button button-secondary" onClick={() => { window.location.hash = `#/console/${navToSlug("聚合发布")}`; }}>去聚合发布</button>
                         <button type="button" className="text-link" onClick={() => decideReview(item, "reopen")}>撤回重审</button>
                       </>
-                    ) : (
+                    ) : item.status === "rejected" ? null : (
                       <small className="geo-hint">{distributeBlockReason(item)}</small>
                     )}
                     <button
@@ -1239,7 +1239,7 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
                         {rows.map((entry) => (
                           <li className="geo-library-row" key={entry.word}>
                             <span className="geo-library-word">
-                              <strong>{entry.word}</strong>
+                              <strong title={entry.word}>{entry.word}</strong>
                               <small>{entry.source === "manual" ? "手动" : "拓词"}{entry.seed ? ` · 种子词 ${entry.seed}` : ""}</small>
                             </span>
                             <select
@@ -1308,11 +1308,13 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
             {questionItems.map((item, index) => (
               <li className="geo-q-row" key={index}>
                 <span className="geo-q-no">{index + 1}</span>
-                <input
+                <textarea
+                  rows={1}
                   value={item.text}
-                  onChange={(event) => updateQuestion(index, { text: event.target.value })}
+                  onChange={(event) => updateQuestion(index, { text: event.target.value.replace(/\n/g, "") })}
                   placeholder="例如：现煮茶饮哪家比较靠谱？"
                   aria-label={`第 ${index + 1} 条监测问题`}
+                  title={item.text}
                 />
                 <select
                   value={item.intent ?? ""}

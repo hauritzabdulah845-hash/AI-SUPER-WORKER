@@ -171,7 +171,7 @@ export function SettingsCenter() {
               </label>
               <label>
                 <span>备注</span>
-                <input value={editing.note} onChange={(event) => setEditing({ ...editing, note: event.target.value })} placeholder="选填，如负责门店" />
+                <input value={editing.note} maxLength={100} onChange={(event) => setEditing({ ...editing, note: event.target.value })} placeholder="选填，如负责门店（最多 100 字）" />
               </label>
               <div className="settings-form-actions">
                 <button type="button" className="button button-secondary" onClick={() => setEditing(null)}>
@@ -196,7 +196,7 @@ export function SettingsCenter() {
                       <em className="settings-role-badge">{member.role}</em>
                       {member.status === "停用" && <em className="settings-role-badge muted">已停用</em>}
                     </strong>
-                    {member.note && <span>{member.note}</span>}
+                    {member.note && <span title={member.note}>{member.note}{member.note.length >= 100 ? "…" : ""}</span>}
                   </div>
                   <div className="settings-actions">
                     <button type="button" className="text-link" onClick={() => setEditing(member)}>
@@ -284,7 +284,7 @@ export function SettingsCenter() {
                 {catalog.map((row) => (
                   <tr key={row.id} className={row.enabled ? "" : "disabled"}>
                     <td>{row.provider}</td>
-                    <td>{row.model}</td>
+                    <td className="settings-model-cell" title={row.model}>{row.model}</td>
                     <td>
                       <input
                         type="number"

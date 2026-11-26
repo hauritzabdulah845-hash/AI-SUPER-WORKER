@@ -169,7 +169,7 @@ export function BundleCenter({ sources, namePrefix = "交付包" }: BundleCenter
                     <li key={key(item)}>
                       <label className={checked ? "checked" : ""}>
                         <input type="checkbox" checked={checked} onChange={() => toggle(item)} />
-                        <span className="bundle-title">{item.title}</span>
+                        <span className="bundle-title" title={item.title}>{item.title}</span>
                         <span className="bundle-ext">{item.ext}</span>
                         {item.source && <span className="bundle-source">{item.source}</span>}
                       </label>

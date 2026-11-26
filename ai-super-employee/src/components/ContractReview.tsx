@@ -140,13 +140,16 @@ export function ContractReview() {
                 ))}
               </select>
             </label>
-            <label className="contract-file">
+            <div className="contract-file">
               <span>读取合同文件{parsing ? "（解析中…）" : ""}</span>
               <span className="contract-file-row">
                 {parsing ? <LoaderCircle size={14} className="spin" /> : <Upload size={14} />}
-                <input type="file" accept={DOC_ACCEPT} disabled={parsing} onChange={(event) => void readFile(event.target.files?.[0])} />
+                <label className="button button-secondary file-pick">
+                  选择文件
+                  <input type="file" accept={DOC_ACCEPT} hidden disabled={parsing} onChange={(event) => void readFile(event.target.files?.[0])} />
+                </label>
               </span>
-            </label>
+            </div>
           </div>
           <label className="contract-text">
             <span>合同文本 *</span>

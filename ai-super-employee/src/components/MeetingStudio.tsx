@@ -121,13 +121,16 @@ export function MeetingStudio() {
               <span>参会人（选填）</span>
               <input value={attendees} onChange={(event) => setAttendees(event.target.value)} placeholder="如：张三、李四、王五" />
             </label>
-            <label className="meeting-file">
+            <div className="meeting-file">
               <span>读取 .txt 文件</span>
               <span className="meeting-file-row">
                 <Upload size={14} />
-                <input type="file" accept=".txt,text/plain" onChange={(event) => void readFile(event.target.files?.[0])} />
+                <label className="button button-secondary file-pick">
+                  选择文件
+                  <input type="file" accept=".txt,text/plain" hidden onChange={(event) => void readFile(event.target.files?.[0])} />
+                </label>
               </span>
-            </label>
+            </div>
           </div>
           <label className="meeting-text">
             <span>转写文本 *</span>

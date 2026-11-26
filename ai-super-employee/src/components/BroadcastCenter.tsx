@@ -76,6 +76,7 @@ export function BroadcastCenter(props: { leads: LeadRow[]; kfBaseUrl: string; kf
   const [plans, setPlans] = useState<BroadcastPlan[]>(() => loadBroadcasts());
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [expandedPreviews, setExpandedPreviews] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState("");
   const toastTimer = useRef<number | null>(null);
   const runningRef = useRef<Set<string>>(new Set());
@@ -369,7 +370,7 @@ export function BroadcastCenter(props: { leads: LeadRow[]; kfBaseUrl: string; kf
                   <span className={`pipeline-badge ${plan.status === "scheduled" ? "on" : ""}`}>
                     {plan.status === "scheduled" ? (due ? "待发送" : "已排期") : plan.status === "done" ? "已发送" : "草稿"}
                   </span>
-                  <h3>{plan.name}</h3>
+                  <h3 title={plan.name}>{plan.name}</h3>
                 </div>
                 <div className="pipeline-card-actions">
                   <button
@@ -400,7 +401,29 @@ export function BroadcastCenter(props: { leads: LeadRow[]; kfBaseUrl: string; kf
                 </div>
               </div>
 
-              <p className="broadcast-content-preview">{renderContent(plan.content, { name: "张三", stage: "跟进中", source: "地图获客" }) || "（内容为空）"}</p>
+              {(() => {
+                const previewText = renderContent(plan.content, { name: "张三", stage: "跟进中", source: "地图获客" }) || "（内容为空）";
+                const expanded = expandedPreviews.has(plan.id);
+                return (
+                  <>
+                    <p className={`broadcast-content-preview${expanded ? " expanded" : ""}`} title={previewText}>{previewText}</p>
+                    {previewText.length > 50 && (
+                      <button
+                        type="button"
+                        className="text-link broadcast-preview-toggle"
+                        aria-expanded={expanded}
+                        onClick={() => setExpandedPreviews((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(plan.id)) next.delete(plan.id); else next.add(plan.id);
+                          return next;
+                        })}
+                      >
+                        {expanded ? "收起" : "展开全文"}
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
 
               <div className="pipeline-meta">
                 <span className={`approval-chip ${plan.approval ?? "none"}`}>{approvalLabel(plan)}</span>

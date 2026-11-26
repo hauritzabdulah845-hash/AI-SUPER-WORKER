@@ -532,7 +532,7 @@ export function PipelineCenter() {
               <div className="pipeline-card-head">
                 <div className="pipeline-card-title">
                   <span className={`pipeline-badge ${pipeline.enabled ? "on" : ""}`}>{pipeline.enabled ? "运行中" : "已停用"}</span>
-                  <h3>{pipeline.name}</h3>
+                  <h3 title={pipeline.name}>{pipeline.name}</h3>
                 </div>
                 <div className="pipeline-card-actions">
                   <button type="button" className="button button-secondary" onClick={() => void runOne(pipeline.id, true)} disabled={busy}>
