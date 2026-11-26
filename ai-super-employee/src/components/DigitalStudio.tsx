@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ClipboardCopy, Download, Film, LoaderCircle, Mic, ScanSearch, ScrollText, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
 import {
@@ -180,7 +181,7 @@ export function DigitalStudio() {
       setDrafts({ items: result.drafts, demo: result.demo });
       notify(result.demo ? "模型不可用，已给出演示稿（可直接改）" : `已生成 ${result.drafts.length} 条口播稿`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "生成失败");
+      setError(err instanceof Error ? friendlyError(err) : "生成失败");
     } finally {
       setBusy(false);
     }
@@ -227,7 +228,7 @@ export function DigitalStudio() {
       setSavedPlans(loadSavedDigitalPlans());
       notify(result.demo ? "模型不可用，已给出模板/启发式方案（结构完整）" : "口播方案已生成并留档");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "方案生成失败");
+      setError(err instanceof Error ? friendlyError(err) : "方案生成失败");
     } finally {
       setBusy(false);
     }
@@ -245,7 +246,7 @@ export function DigitalStudio() {
         } 与素材放同目录运行`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "脚本导出失败");
+      setError(err instanceof Error ? friendlyError(err) : "脚本导出失败");
     }
   };
 
@@ -293,7 +294,7 @@ export function DigitalStudio() {
       );
       notify("配音已生成并入素材库");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "配音生成失败");
+      setError(err instanceof Error ? friendlyError(err) : "配音生成失败");
     } finally {
       setBusy(false);
     }
@@ -338,7 +339,7 @@ export function DigitalStudio() {
       const vision = rows.filter((row) => row.source === "vision").length;
       notify(`已分析 ${rows.length} 个素材（${vision ? `视觉 ${vision} 个` : "启发式"}）`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "分析失败");
+      setError(err instanceof Error ? friendlyError(err) : "分析失败");
     } finally {
       setBusy(false);
     }
@@ -394,7 +395,7 @@ export function DigitalStudio() {
       await refreshMedia();
       notify(role ? `已标注为「${MEDIA_ROLES.find((item) => item.value === role)?.label}」` : "已清除角色标注");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "标注失败");
+      setError(err instanceof Error ? friendlyError(err) : "标注失败");
     }
   };
 

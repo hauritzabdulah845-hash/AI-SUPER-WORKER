@@ -147,7 +147,7 @@
 
 .brand-copy small {
   color: #858297;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
   letter-spacing: .14em;
 }
@@ -2365,7 +2365,7 @@
   color: #6956cf;
   background: #e9e4ff;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
 }
 
@@ -2377,13 +2377,13 @@
 }
 
 .workspace-switch strong {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 650;
 }
 
 .workspace-switch small {
   color: #9b96a5;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .workspace-switch > svg {
@@ -2438,7 +2438,7 @@
 .console-nav-label {
   margin: 0 10px 8px;
   color: #aaa5b2;
-  font-size: 10px;
+  font-size: 12.5px;
   font-weight: 650;
   letter-spacing: .12em;
 }
@@ -2453,7 +2453,7 @@
   background: transparent;
   border: 0;
   border-radius: 9px;
-  font-size: 11px;
+  font-size: 12.5px;
   text-align: left;
   transition: color .2s, background .2s;
 }
@@ -2473,13 +2473,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 19px;
+  min-width: 19px;
   height: 23px;
+  padding: 0 4px;
   margin-left: auto;
   color: #7565bf;
   background: #e0d9fc;
   border-radius: 6px;
-  font-size: 10px;
+  font-size: 12.5px;
 }
 
 .sidebar-capacity {
@@ -2496,7 +2497,7 @@
   display: flex;
   justify-content: space-between;
   color: #817b8b;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .capacity-title strong {
@@ -2532,7 +2533,7 @@
   color: #6d5abf;
   background: none;
   border: 0;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .back-to-site {
@@ -2545,7 +2546,7 @@
   color: #8b8593;
   background: none;
   border: 0;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .back-to-site:hover {
@@ -2579,7 +2580,7 @@
 .console-topbar-left > div:last-child {
   display: flex;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .console-topbar-left span {
@@ -2710,7 +2711,7 @@
   min-height: 35px;
   padding: 0 13px;
   border-radius: 8px;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .console-user {
@@ -2731,7 +2732,7 @@
   color: #5f4db5;
   background: #e8e2fb;
   border-radius: 9px;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
 }
 
@@ -2743,12 +2744,12 @@
 
 .console-user strong {
   color: #4f4958;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .console-user small {
   color: #a19aa8;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .console-content {
@@ -2766,7 +2767,7 @@
 
 .console-date {
   color: #a29ca9;
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .console-page-heading h1 {
@@ -9665,3 +9666,61 @@ ol.meeting-plain-list { list-style: decimal; }
   .geo-review-actions input { min-width: 120px; }
   .geo-schedule-row .button { white-space: nowrap; }
 }
+
+/* ===== 第三十批：GEO 稿件引用状态 + 示例报告（评审 P2） ===== */
+.geo-citations { margin: 0 0 var(--space-4); padding: 0 19px; }
+.geo-citations h3 { margin: 0 0 var(--space-2); color: var(--ink-2); font-size: 13.5px; }
+.geo-citation-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.geo-citation-row { padding: var(--space-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); display: grid; gap: 4px; }
+.geo-citation-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.geo-citation-main strong { color: var(--ink-2); font-size: 13.5px; }
+.geo-citation-platform { padding: 2px 9px; background: var(--brand-soft); border-radius: 999px; color: var(--brand-strong); font-size: 11px; font-weight: 650; }
+.geo-citation-badge { padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--ink-5); font-size: 11px; font-weight: 650; }
+.geo-citation-badge.cited { background: var(--success-soft); border-color: transparent; color: var(--success-strong); }
+.geo-citation-row small { color: var(--ink-5); font-size: 11px; line-height: 1.6; }
+
+.geo-sample-report { margin: 0 19px var(--space-4); padding: var(--space-4); border: 1.5px dashed var(--brand-mid); border-radius: var(--radius-md); background: var(--surface-muted); display: grid; gap: var(--space-3); }
+.geo-sample-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.geo-sample-head strong { color: var(--ink-2); font-size: 13.5px; }
+.geo-sample-head small { color: var(--ink-5); font-size: 11px; flex-basis: 100%; line-height: 1.6; }
+.geo-sample-badge { padding: 2px 9px; border-radius: 999px; background: var(--brand); color: var(--on-brand, #fff); font-size: 11px; font-weight: 700; }
+.geo-sample-questions h3 { margin: 0 0 var(--space-2); color: var(--ink-2); font-size: 13.5px; }
+.geo-sample-questions table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.geo-sample-questions th { padding: 6px 8px; text-align: left; color: var(--ink-5); font-size: 11px; border-bottom: 1px solid var(--line); }
+.geo-sample-questions td { padding: 6px 8px; color: var(--ink-3); border-bottom: 1px solid var(--ink-6); }
+.geo-sample-foot { margin: 0; color: var(--ink-5); font-size: 11px; }
+.geo-sample-link { margin: 0 0 var(--space-3); padding: 0 19px; }
+
+@media (max-width: 640px) {
+  .geo-citations { padding: 0 14px; }
+  .geo-sample-report { margin: 0 14px var(--space-4); padding: var(--space-3); }
+  .geo-sample-questions table { display: block; overflow-x: auto; }
+}
+
+/* ===== 文字检查修复（2026-11-26 全系统文字显示检查 S2/S3/M1/M2） ===== */
+
+/* S2/M1：卡片头按钮防单字竖排——把第 27 批 GEO 卡片头的规则推广到全站卡片头 */
+.console-card-header .button,
+.console-card-header .text-link { white-space: nowrap; flex: none; }
+
+@media (max-width: 640px) {
+  /* 窄屏卡片头纵向堆叠：标题说明一行、按钮一行，说明文字正常断行 */
+  .console-card-header { flex-wrap: wrap; gap: 10px; }
+  .console-card-header > div { flex: 1 1 100%; min-width: 0; }
+  .lead-header-actions,
+  .console-card-header .service-actions { flex-wrap: wrap; }
+}
+
+/* S3：企业设置价格表——父级 .settings-body 是 flex 列，wrap 需 min-width:0 才能收缩滚动；
+   表格给最小宽度，窄屏横向滚动而不是挤压裁切右列 */
+.settings-table-wrap { min-width: 0; max-width: 100%; }
+.settings-table { min-width: 560px; }
+@media (max-width: 640px) {
+  .settings-table input[type="number"] { width: 96px; }
+}
+
+/* M2：模型接入「配额与消耗」面板——整卡统一内边距，底部三行与卡片头对齐 */
+.usage-panel { padding: 0 19px 16px; }
+.usage-panel .console-card-header { padding-left: 0; padding-right: 0; }
+.usage-panel .usage-alerts { margin-top: 12px; }
+.usage-panel .usage-metrics { margin-top: 12px; }

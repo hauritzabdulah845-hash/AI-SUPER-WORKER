@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useState } from "react";
 import { ClipboardCopy, Download, FileSearch, LoaderCircle, Scale, Trash2, Upload } from "lucide-react";
 import {
@@ -72,7 +73,7 @@ export function ContractReview() {
       );
       setError("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "文件解析失败，请改用粘贴文本");
+      setError(err instanceof Error ? friendlyError(err) : "文件解析失败，请改用粘贴文本");
     } finally {
       setParsing(false);
     }
@@ -93,7 +94,7 @@ export function ContractReview() {
       setHistory(saveContractReview(record));
       setNotice(reviewed.demo ? "已完成演示初筛（关键词规则）" : "审查完成");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "审查失败，请重试");
+      setError(err instanceof Error ? friendlyError(err) : "审查失败，请重试");
     } finally {
       setBusy(false);
     }

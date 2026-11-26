@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
@@ -145,7 +146,7 @@ export function VideoStudio() {
       if (which === 1) setImage(dataUrl);
       else setImage2(dataUrl);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "图片读取失败");
+      setError(err instanceof Error ? friendlyError(err) : "图片读取失败");
     }
   };
 
@@ -170,7 +171,7 @@ export function VideoStudio() {
       setImage(undefined);
       setImage2(undefined);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "提交失败");
+      setError(err instanceof Error ? friendlyError(err) : "提交失败");
     } finally {
       setBusy(false);
     }

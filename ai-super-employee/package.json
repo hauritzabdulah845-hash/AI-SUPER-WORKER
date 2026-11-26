@@ -39,6 +39,7 @@
     "test:keywordlibrary": "tsx scripts/keywordlibrary-check.ts",
     "test:brandassets": "tsx scripts/brandassets-check.ts",
     "test:georeview": "tsx scripts/georeview-check.ts",
+    "test:geocitation": "tsx scripts/geocitation-check.ts",
     "test:geoschedule": "tsx scripts/geoschedule-check.ts"
   },
   "dependencies": {

@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useMemo, useState } from "react";
 import { Archive, Download, FileText, Package, Presentation } from "lucide-react";
 import { zipSync, strToU8 } from "fflate";
@@ -112,7 +113,7 @@ export function BundleCenter({ sources, namePrefix = "交付包" }: BundleCenter
       URL.revokeObjectURL(url);
       setNotice(`已打包 ${preview.entries.length} 个文件（${formatBytes(blob.size)}）`);
     } catch (error) {
-      setNotice(`打包失败：${error instanceof Error ? error.message : String(error)}`);
+      setNotice(`打包失败：${friendlyError(error)}`);
     } finally {
       setBusy(false);
     }

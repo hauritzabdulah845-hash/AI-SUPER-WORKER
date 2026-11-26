@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useCallback, useEffect, useState } from "react";
 import {
   Check,
@@ -106,7 +107,7 @@ export function CommandInbox({ onExecute }: CommandInboxProps) {
           .slice(0, 50),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "指令拉取失败");
+      setError(err instanceof Error ? friendlyError(err) : "指令拉取失败");
     } finally {
       setBusy(false);
     }
@@ -128,7 +129,7 @@ export function CommandInbox({ onExecute }: CommandInboxProps) {
       setCommands((current) => current.map((item) => (item.id === id ? { ...item, status } : item)));
       setNotice(status === "done" ? `指令 #${id} 已标记完成` : `指令 #${id} 已忽略`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "状态回写失败");
+      setError(err instanceof Error ? friendlyError(err) : "状态回写失败");
     }
   };
 

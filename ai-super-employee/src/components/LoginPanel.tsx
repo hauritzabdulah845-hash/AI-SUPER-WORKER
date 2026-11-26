@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useState } from "react";
 import { KeyRound, LoaderCircle, MessageSquareText, ShieldCheck, Sparkles } from "lucide-react";
 import { cloud } from "../cloud/client";
@@ -32,7 +33,7 @@ export default function LoginPanel({ onSignedIn, reason }: LoginPanelProps) {
     const { data, error: sendError } = await cloud.auth.sendOtp({ phone });
     setSending(false);
     if (sendError) {
-      setError(sendError.message);
+      setError(friendlyError(sendError));
       return;
     }
     setOtp({ phone, verificationId: data.verificationId, isExistingUser: data.isExistingUser });
@@ -54,7 +55,7 @@ export default function LoginPanel({ onSignedIn, reason }: LoginPanelProps) {
     });
     setPending(false);
     if (verifyError) {
-      setError(verifyError.message);
+      setError(friendlyError(verifyError));
       return;
     }
     onSignedIn();
@@ -72,7 +73,7 @@ export default function LoginPanel({ onSignedIn, reason }: LoginPanelProps) {
     });
     setPending(false);
     if (oauthError) {
-      setError(oauthError.message);
+      setError(friendlyError(oauthError));
       return;
     }
     window.location.assign(data.url);

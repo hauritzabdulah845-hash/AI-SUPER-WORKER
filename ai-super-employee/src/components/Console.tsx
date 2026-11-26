@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
@@ -436,7 +437,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setArtworks((current) => [...saved, ...current]);
       setStudioNotice(`已生成 ${saved.length} 张，已存入本地作品库`);
     } catch (error) {
-      setStudioError(error instanceof Error ? error.message : "生成失败，请稍后重试");
+      setStudioError(error instanceof Error ? friendlyError(error) : "生成失败，请稍后重试");
     } finally {
       setStudioBusy(false);
     }
@@ -449,7 +450,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       if (preview?.id === item.id) setPreview(null);
       setToast("作品已删除");
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "删除失败");
+      setToast(error instanceof Error ? friendlyError(error) : "删除失败");
     }
   };
 
@@ -460,7 +461,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setPreview(null);
       setToast("作品库已清空");
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "清空失败");
+      setToast(error instanceof Error ? friendlyError(error) : "清空失败");
     }
   };
 
@@ -547,7 +548,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setKnowledge(docRows);
       setWecomLinks(linkRows);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "数据加载失败");
+      setToast(error instanceof Error ? friendlyError(error) : "数据加载失败");
     } finally {
       setLoading(false);
     }
@@ -583,7 +584,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setToast(`扫描完成：${items.length} 个文件，其中 ${items.filter((item) => item.supported).length} 个可导入`);
     } catch (error) {
       const err = error as Error;
-      if (err.name !== "AbortError") setToast(err.message || "读取文件夹失败");
+      if (err.name !== "AbortError") setToast(err.message ? friendlyError(err) : "读取文件夹失败");
     } finally {
       setKbBusy("");
       setKbProgress("");
@@ -610,7 +611,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       applyScan(items, handle.name);
       setToast(`重新扫描完成：${items.length} 个文件`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "重新扫描失败");
+      setToast(error instanceof Error ? friendlyError(error) : "重新扫描失败");
     } finally {
       setKbBusy("");
       setKbProgress("");
@@ -636,7 +637,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       applyScan(items, folderName);
       setToast(`扫描完成：${items.length} 个文件`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "读取文件失败");
+      setToast(error instanceof Error ? friendlyError(error) : "读取文件失败");
     } finally {
       setKbBusy("");
     }
@@ -702,7 +703,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setKbResult(`已导入 ${imported} 份资料${updatedPart}${failed ? `，${failed} 份失败：${firstError}` : "，智能体现在可以调用这些内容"}`);
       setToast(`导入完成：新增 ${imported} 份${updated ? ` · 更新 ${updated} 份` : ""}`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "导入失败");
+      setToast(error instanceof Error ? friendlyError(error) : "导入失败");
     } finally {
       setKbBusy("");
       setKbProgress("");
@@ -1065,7 +1066,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setAgents((current) => [...current, agent]);
       setToast(`已从「${template.name}」实例化智能体：${agent.name}`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "智能体创建失败");
+      setToast(error instanceof Error ? friendlyError(error) : "智能体创建失败");
     }
   };
 
@@ -1085,7 +1086,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setLeads((current) => current.map((item) => (item.id === lead.id ? { ...item, stage: next } : item)));
       setToast(`「${lead.name}」已推进到「${next}」`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "线索更新失败");
+      setToast(error instanceof Error ? friendlyError(error) : "线索更新失败");
     }
   };
 
@@ -1095,7 +1096,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setLeads((current) => current.filter((item) => item.id !== lead.id));
       setToast(`线索「${lead.name}」已删除`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "线索删除失败");
+      setToast(error instanceof Error ? friendlyError(error) : "线索删除失败");
     }
   };
 
@@ -1177,7 +1178,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setToast(`企微同步完成：${summary}`);
       setLeads(await listLeads());
     } catch (error) {
-      const message = error instanceof Error ? error.message : "同步失败";
+      const message = error instanceof Error ? friendlyError(error) : "同步失败";
       setKfSummary(message);
       setToast(message);
     } finally {
@@ -1199,7 +1200,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setKfMessages(chats);
     } catch (error) {
       setFollowUps([]);
-      setToast(error instanceof Error ? error.message : "跟进记录读取失败");
+      setToast(error instanceof Error ? friendlyError(error) : "跟进记录读取失败");
     } finally {
       setFollowUpLoading(false);
     }
@@ -1230,7 +1231,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setFollowUpForm({ channel: followUpForm.channel, result: "已联系", next: "", note: "" });
       setToast(stageChanged ? `跟进已记录，「${lead.name}」推进到「${followUpStage}」` : `「${lead.name}」的跟进已记录`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "跟进记录保存失败");
+      setToast(error instanceof Error ? friendlyError(error) : "跟进记录保存失败");
     } finally {
       setFormSaving("");
     }
@@ -1293,7 +1294,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setLeadForm({ name: "", source: "", intent: "高意向", need: "", owner: "" });
       setToast(`线索「${created.name}」已录入`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "线索录入失败");
+      setToast(error instanceof Error ? friendlyError(error) : "线索录入失败");
     } finally {
       setFormSaving("");
     }
@@ -1318,7 +1319,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setKnowledgeForm({ title: "", docType: "产品手册", content: "" });
       setToast(`知识「${created.title}」已录入，可供智能体调用`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "知识录入失败");
+      setToast(error instanceof Error ? friendlyError(error) : "知识录入失败");
     }
   };
 
@@ -1347,7 +1348,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setDocDetail(null);
       setToast(`知识「${doc.title}」已删除`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "知识删除失败");
+      setToast(error instanceof Error ? friendlyError(error) : "知识删除失败");
     }
   };
 
@@ -1357,7 +1358,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setAgents((current) => current.filter((item) => item.id !== agent.id));
       setToast(`智能体「${agent.name}」已移除`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "智能体删除失败");
+      setToast(error instanceof Error ? friendlyError(error) : "智能体删除失败");
     }
   };
 
@@ -1372,7 +1373,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setSelectedTask(null);
       setToast("任务记录已删除");
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "任务删除失败");
+      setToast(error instanceof Error ? friendlyError(error) : "任务删除失败");
     }
   };
 
@@ -1516,7 +1517,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       await load();
       setToast("该条内容产出已移除");
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "内容移除失败");
+      setToast(error instanceof Error ? friendlyError(error) : "内容移除失败");
     }
   };
 
@@ -1576,7 +1577,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setWecomForm({ kind: "智能文档", title: "", summary: "", url: "" });
       setToast("企微资产已登记，团队可在列表中直达");
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "企微资产登记失败");
+      setToast(error instanceof Error ? friendlyError(error) : "企微资产登记失败");
     } finally {
       setFormSaving("");
     }
@@ -1588,7 +1589,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setWecomLinks((current) => current.filter((item) => item.id !== link.id));
       setToast(`已移除「${link.title}」`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "企微资产删除失败");
+      setToast(error instanceof Error ? friendlyError(error) : "企微资产删除失败");
     }
   };
 
@@ -1605,7 +1606,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setAgentEditing(null);
       setToast("智能体名称已更新");
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "智能体重命名失败");
+      setToast(error instanceof Error ? friendlyError(error) : "智能体重命名失败");
     }
   };
 
@@ -1638,7 +1639,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       setPersonaEditing(null);
       setToast(custom === personaEditing.baseline ? "已恢复官方默认人设" : `「${personaEditing.name}」的人设已保存，下次派活即生效`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "人设保存失败");
+      setToast(error instanceof Error ? friendlyError(error) : "人设保存失败");
     } finally {
       setPersonaSaving(false);
     }

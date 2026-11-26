@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useMemo, useState } from "react";
 import { Bell, Bot, CheckCircle2, MessageSquareText, Plug, Save, ShieldAlert, Sparkles, Trash2, Wrench } from "lucide-react";
 import {
@@ -114,7 +115,7 @@ export function ServiceChannels({ kfBaseUrl = "", kfSecret = "" }: ServiceChanne
       }
       setNotice("名单已同步到服务端（群发门禁与自动回复即刻生效）");
     } catch (error) {
-      setNotice(`同步失败：${error instanceof Error ? error.message : String(error)}`);
+      setNotice(`同步失败：${friendlyError(error)}`);
     }
   };
 
@@ -138,7 +139,7 @@ export function ServiceChannels({ kfBaseUrl = "", kfSecret = "" }: ServiceChanne
       setLocalIntents(rows.slice(0, 20));
       setNotice(`已拉取 ${rows.length} 条意向提醒`);
     } catch (error) {
-      setNotice(`拉取失败：${error instanceof Error ? error.message : String(error)}`);
+      setNotice(`拉取失败：${friendlyError(error)}`);
     }
   };
 

@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Clock3, Download, LoaderCircle, Pencil, Play, Plus, Trash2, X } from "lucide-react";
 import {
@@ -141,7 +142,7 @@ export function PipelineCenter() {
             : `「${name}」执行结束：${failed} 步失败（详见运行记录）`,
         );
       } catch (error) {
-        notify(`执行失败：${error instanceof Error ? error.message : String(error)}`);
+        notify(`执行失败：${friendlyError(error)}`);
       } finally {
         setRunning((prev) => ({ ...prev, [id]: false }));
         refresh();
@@ -271,7 +272,7 @@ export function PipelineCenter() {
       setSchedDueCount(due.length);
       notify(`已同步 ${count} 条计划到常驻调度（当前到期 ${due.length} 条）`);
     } catch (error) {
-      setSchedError(error instanceof Error ? error.message : "同步失败");
+      setSchedError(error instanceof Error ? friendlyError(error) : "同步失败");
     } finally {
       setSchedBusy(false);
     }
@@ -289,7 +290,7 @@ export function PipelineCenter() {
       if (report.error) setSchedError(`补跑失败：${report.error}`);
       else notify(`补跑完成：执行 ${report.ranIds.length} 条，跳过 ${report.skippedCount} 条，积压剩余 ${report.remaining} 条`);
     } catch (error) {
-      setSchedError(error instanceof Error ? error.message : "补跑失败");
+      setSchedError(error instanceof Error ? friendlyError(error) : "补跑失败");
     } finally {
       setCatchupBusy(false);
     }

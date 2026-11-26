@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useEffect, useId, useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -150,7 +151,7 @@ export default function CommandDemo({
       }
       onFinished?.();
     } catch (runError) {
-      setError(runError instanceof Error ? runError.message : "任务执行失败，请稍后重试");
+      setError(runError instanceof Error ? friendlyError(runError) : "任务执行失败，请稍后重试");
       setRunState("error");
     }
   };
@@ -247,7 +248,7 @@ export default function CommandDemo({
       <div className="execution-panel" aria-live="polite">
         <div className="execution-header">
           <div>
-            <span className="execution-eyebrow">{domain ? `TASK · ${domain}` : "TASK ORCHESTRATION"}</span>
+            <span className="execution-eyebrow">{domain ? `任务编排 · ${domain}` : "任务编排"}</span>
             <h3>{runState === "done" ? "任务已完成" : runState === "running" ? "AI 团队正在协作" : runState === "error" ? "执行中断" : "等待你的目标"}</h3>
             {title && <p className="execution-task-title">{title}</p>}
           </div>

@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useEffect, useState } from "react";
 import { Download, FileText, LoaderCircle, Presentation, Save, Sparkles, Trash2 } from "lucide-react";
 import {
@@ -74,7 +75,7 @@ export function OfficeStudio() {
       setPptOutline(outline);
       setNotice(outline.demo ? "模型不可用，已给出演示大纲（结构完整，可直接改）" : "演示大纲已生成");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "大纲生成失败");
+      setError(err instanceof Error ? friendlyError(err) : "大纲生成失败");
     } finally {
       setBusy(false);
     }
@@ -90,7 +91,7 @@ export function OfficeStudio() {
       setDocOutline(outline);
       setNotice(outline.demo ? "模型不可用，已给出演示大纲（结构完整，可直接改）" : "文档大纲已生成");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "大纲生成失败");
+      setError(err instanceof Error ? friendlyError(err) : "大纲生成失败");
     } finally {
       setBusy(false);
     }
@@ -112,7 +113,7 @@ export function OfficeStudio() {
       downloadBlob(`${pptOutline.title || "演示"}.pptx`, blob);
       setNotice(`PPT 已生成（${pptOutline.slides.length + 1} 页，本机渲染）`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "PPT 生成失败");
+      setError(err instanceof Error ? friendlyError(err) : "PPT 生成失败");
     } finally {
       setBusy(false);
     }
@@ -126,7 +127,7 @@ export function OfficeStudio() {
       downloadBlob(`${docOutline.title || "文档"}.docx`, blob);
       setNotice("Word 文档已生成（本机渲染）");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "文档生成失败");
+      setError(err instanceof Error ? friendlyError(err) : "文档生成失败");
     } finally {
       setBusy(false);
     }

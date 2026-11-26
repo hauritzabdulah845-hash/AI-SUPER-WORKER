@@ -20,8 +20,18 @@ import {
   questionDeltas,
   sourceRanking,
   sparklinePoints,
+  type CompetitorRow,
   type GeoSnapshot,
+  type SourceRankRow,
 } from "../cloud/geotrack";
+import { loadReviewQueue } from "../cloud/geoReview";
+import {
+  CITATION_WAY_LABEL,
+  matchDraftCitations,
+  reviewItemToCitationDraft,
+  type DraftCitationStatus,
+} from "../cloud/geoCitation";
+import { GEO_SAMPLE_SNAPSHOTS } from "../cloud/geoSample";
 import {
   appendSnapshot,
   clearSnapshotsFor,
@@ -74,6 +84,152 @@ function Sparkline({ series }: { series: number[] }) {
   );
 }
 
+/** 竞品对比表（真实报表与示例报告共用同一渲染，保证示例不走样） */
+function ComparisonTable({ rows }: { rows: CompetitorRow[] }) {
+  return (
+    <table>
+      <thead><tr><th>品牌</th><th>提及率</th><th>平均首位</th><th>与本品牌差</th><th>名次</th></tr></thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.brand} className={row.isSelf ? "self" : ""}>
+            <td>{row.brand}{row.isSelf ? "（本品牌）" : ""}</td>
+            <td>{pct(row.mentionRate)}</td>
+            <td>{row.firstPos === null ? "—" : Math.round(row.firstPos)}</td>
+            <td>
+              {row.isSelf ? "—" : (
+                <span className={row.deltaRate > 0 ? "geo-delta-up" : row.deltaRate < 0 ? "geo-delta-down" : ""}>
+                  {row.deltaRate > 0 ? "▲" : row.deltaRate < 0 ? "▼" : "—"} {Math.abs(row.deltaRate * 100).toFixed(0)} 个百分点
+                </span>
+              )}
+            </td>
+            <td>第 {row.rank} 名</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** 被引用信源 TOP 列表（真实报表与示例报告共用） */
+function SourcesList({ rows }: { rows: SourceRankRow[] }) {
+  return (
+    <ol>
+      {rows.map((row) => (
+        <li key={row.source}><span>{row.source}</span><small>{row.count} 次</small></li>
+      ))}
+    </ol>
+  );
+}
+
+const DELTA_LABEL: Record<string, string> = {
+  gained: "新获得提及",
+  lost: "丢了提及",
+  "stable-hit": "持续命中",
+  "stable-miss": "持续未命中",
+  new: "新问题",
+};
+
+/**
+ * 示例报告（第 30 批）：内置脱敏数据渲染完整报表样子。
+ * 数据来自 geoSample 常量，不落盘、不与真实快照混算；
+ * 虚线框 + 多处「示例数据」标注，一眼可辨不是用户自己的数据。
+ */
+function SampleReport() {
+  const snapshots = GEO_SAMPLE_SNAPSHOTS;
+  const trend = computeTrend(snapshots);
+  const latest = snapshots[snapshots.length - 1];
+  const previous = snapshots[snapshots.length - 2] ?? null;
+  const deltas = questionDeltas(previous, latest);
+  const comparison = competitorComparison(latest);
+  const topSources = sourceRanking(snapshots);
+  return (
+    <div className="geo-sample-report" aria-label="示例报告（示例数据，非真实监测结果）">
+      <div className="geo-sample-head">
+        <span className="geo-sample-badge">示例数据</span>
+        <strong>示例报告（脱敏演示）</strong>
+        <small>以下数字为内置示例，非真实监测结果；跑一次监测后这里会换成你的真实报表。</small>
+      </div>
+      <div className="geo-trend-row">
+        <Sparkline series={snapshots.map(mentionRate)} />
+        <div className="geo-trend-facts">
+          <strong className="geo-trend-rate">{pct(trend.current)}</strong>
+          <small>示例当前提及率 · 共 {trend.points} 次示例记录</small>
+        </div>
+      </div>
+      <p className="geo-trend-summary">{trend.summary}（示例）</p>
+      <div className="geo-sample-questions">
+        <h3>问题级明细（最新一次 · 示例）</h3>
+        <table>
+          <thead><tr><th>问题</th><th>是否提及</th><th>变化</th><th>来源</th></tr></thead>
+          <tbody>
+            {latest.samples.map((item, index) => (
+              <tr key={item.question}>
+                <td>{item.question}</td>
+                <td>{item.mentioned ? `已提及（${item.hits} 次）` : "未提及"}</td>
+                <td>{DELTA_LABEL[deltas[index]?.change ?? "new"]}</td>
+                <td>{item.sources?.length ? item.sources.join("、") : "模型未给出处"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {comparison.length > 1 && (
+        <div className="geo-compare">
+          <h3>竞品对比（最新一次 · 示例）</h3>
+          <ComparisonTable rows={comparison} />
+        </div>
+      )}
+      {topSources.length > 0 && (
+        <div className="geo-sources">
+          <h3>被引用信源 TOP（示例）</h3>
+          <SourcesList rows={topSources} />
+        </div>
+      )}
+      <p className="geo-sample-foot">示例数据结束 —— 以上均为演示数字，不会计入你的监测记录。</p>
+    </div>
+  );
+}
+
+/** 稿件引用状态区（第 30 批）：已通过稿件 × 快照来源的启发式匹配结果 */
+function CitationSection({ statuses, hasSnapshots }: { statuses: DraftCitationStatus[]; hasSnapshots: boolean }) {
+  return (
+    <div className="geo-citations">
+      <h3>稿件引用状态</h3>
+      <p className="geo-hint">按标题/链接启发式匹配，仅供参考：把已通过审核的稿件与监测时模型给出的来源比对，判断哪篇稿可能被引用。</p>
+      {statuses.length === 0 ? (
+        <p className="geo-hint">还没有已通过审核的稿件。先在第 1 步生成素材并送审通过，或在聚合发布页把平台稿送审，这里会显示每篇稿的引用状态。</p>
+      ) : (
+        <ul className="geo-citation-list">
+          {statuses.map((row) => (
+            <li className="geo-citation-row" key={row.draftId}>
+              <div className="geo-citation-main">
+                <strong>{row.title}</strong>
+                {row.platform && <span className="geo-citation-platform">{row.platform}</span>}
+                <span className={row.cited ? "geo-citation-badge cited" : "geo-citation-badge"}>
+                  {row.cited ? `已被引用 ×${row.citationCount}` : "未被引用"}
+                </span>
+              </div>
+              {row.cited ? (
+                <small>
+                  最近引用 {row.lastCitedAt ? formatTime(row.lastCitedAt) : "—"}
+                  {row.matchedSources.length > 0 && <> · 命中信源：{row.matchedSources.join("、")}</>}
+                  {row.matchWays.length > 0 && <> · 匹配方式：{row.matchWays.map((way) => CITATION_WAY_LABEL[way]).join("/")}</>}
+                </small>
+              ) : (
+                <small>
+                  {hasSnapshots
+                    ? "建议：检查标题是否含目标问题、稿件是否已实际发布；发布后等下一轮监测再看。"
+                    : "还没有监测记录，跑一次监测后这里会更新引用状态。"}
+                </small>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /**
  * GEO 持续监测面板。
  *
@@ -87,6 +243,9 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [expanded, setExpanded] = useState(false);
+  // 第 30 批：示例报告开关 + 已通过稿件（稿件引用状态用，按品牌从审核队列读）
+  const [showSample, setShowSample] = useState(false);
+  const [approvedDrafts, setApprovedDrafts] = useState<DraftCitationStatus[]>([]);
   const [competitorText, setCompetitorText] = useState("");
   const competitorList = competitorText.split(/[,，、\s]+/).map((item) => item.trim()).filter(Boolean).slice(0, 3);
   // 第 29 批：周期监测模板（复用 pipeline 定时任务，运行时读当前问题集）。
@@ -120,6 +279,17 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
     const timer = setTimeout(() => setHistory(loadSnapshotsFor(brand)), 0);
     return () => clearTimeout(timer);
   }, [brand]);
+
+  // 稿件引用状态：已通过稿件随品牌/快照变化重算（匹配是纯函数，成本低）
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const approved = loadReviewQueue(brand)
+        .filter((item) => item.status === "approved")
+        .map(reviewItemToCitationDraft);
+      setApprovedDrafts(matchDraftCitations(approved, loadSnapshotsFor(brand)));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [brand, history]);
 
   const trend = useMemo(() => computeTrend(history), [history]);
   const series = useMemo(() => history.map(mentionRate), [history]);
@@ -236,11 +406,17 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
       {notice && <p className="geo-notice">{notice}</p>}
 
       {history.length === 0 ? (
-        <div className="geo-empty">
-          <CalendarClock size={22} />
-          <strong>还没有监测记录</strong>
-          <p>点「跑一次监测」建立基线。建议每周固定跑一次，问题集保持不变，趋势才有意义。</p>
-        </div>
+        <>
+          <div className="geo-empty">
+            <CalendarClock size={22} />
+            <strong>还没有监测记录</strong>
+            <p>点「跑一次监测」建立基线。建议每周固定跑一次，问题集保持不变，趋势才有意义。</p>
+            <button type="button" className="text-link" onClick={() => setShowSample((v) => !v)} aria-expanded={showSample}>
+              {showSample ? "收起示例报告" : "查看示例报告（示例数据）"}
+            </button>
+          </div>
+          {showSample && <SampleReport />}
+        </>
       ) : (
         <>
           <div className="geo-trend-row">
@@ -260,37 +436,14 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
           {comparison.length > 1 && (
             <div className="geo-compare">
               <h3>竞品对比（最新一次）</h3>
-              <table>
-                <thead><tr><th>品牌</th><th>提及率</th><th>平均首位</th><th>与本品牌差</th><th>名次</th></tr></thead>
-                <tbody>
-                  {comparison.map((row) => (
-                    <tr key={row.brand} className={row.isSelf ? "self" : ""}>
-                      <td>{row.brand}{row.isSelf ? "（本品牌）" : ""}</td>
-                      <td>{pct(row.mentionRate)}</td>
-                      <td>{row.firstPos === null ? "—" : Math.round(row.firstPos)}</td>
-                      <td>
-                        {row.isSelf ? "—" : (
-                          <span className={row.deltaRate > 0 ? "geo-delta-up" : row.deltaRate < 0 ? "geo-delta-down" : ""}>
-                            {row.deltaRate > 0 ? "▲" : row.deltaRate < 0 ? "▼" : "—"} {Math.abs(row.deltaRate * 100).toFixed(0)} 个百分点
-                          </span>
-                        )}
-                      </td>
-                      <td>第 {row.rank} 名</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <ComparisonTable rows={comparison} />
             </div>
           )}
 
           {topSources.length > 0 && (
             <div className="geo-sources">
               <h3>被引用信源 TOP</h3>
-              <ol>
-                {topSources.map((row) => (
-                  <li key={row.source}><span>{row.source}</span><small>{row.count} 次</small></li>
-                ))}
-              </ol>
+              <SourcesList rows={topSources} />
             </div>
           )}
 
@@ -351,6 +504,18 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
           )}
         </>
       )}
+
+      {/* 第 30 批：稿件引用状态（与信源 TOP 并列，口径一致；无快照时也显示稿件清单） */}
+      <CitationSection statuses={approvedDrafts} hasSnapshots={history.length > 0} />
+
+      {history.length > 0 && (
+        <p className="geo-sample-link">
+          <button type="button" className="text-link" onClick={() => setShowSample((v) => !v)} aria-expanded={showSample}>
+            {showSample ? "收起示例报告" : "查看示例报告（示例数据，非真实监测结果）"}
+          </button>
+        </p>
+      )}
+      {history.length > 0 && showSample && <SampleReport />}
 
       <p className="geo-storage-note">
         <Database size={12} /> 品牌资料与素材在云端工作区；监测记录暂存本机浏览器（最多 60 次），云端同步规划中。换设备或清缓存会丢失。

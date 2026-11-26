@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useState } from "react";
 import { KeyRound, LoaderCircle, MapPin, Search, ShieldCheck, Upload } from "lucide-react";
 import type { LeadRow } from "../cloud/api";
@@ -56,7 +57,7 @@ export function MapLeads(props: {
       setNotice(next.demo ? next.note ?? "演示数据已加载" : `真实采集 ${next.items.length} 家（命中 ${next.total}）`);
     } catch (err) {
       setResult(null);
-      setError(err instanceof Error ? err.message : "搜索失败");
+      setError(err instanceof Error ? friendlyError(err) : "搜索失败");
     } finally {
       setBusy(false);
     }

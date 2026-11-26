@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useMemo, useState } from "react";
 import { Briefcase, ClipboardCopy, Download, LoaderCircle, Plus, Save, Trash2, Upload, UserSearch } from "lucide-react";
 import {
@@ -146,7 +147,7 @@ export function HrStudio() {
       );
       setError("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "文件解析失败，请改用粘贴文本");
+      setError(err instanceof Error ? friendlyError(err) : "文件解析失败，请改用粘贴文本");
     } finally {
       setResumeParsing(false);
     }
@@ -166,7 +167,7 @@ export function HrStudio() {
       setResumes(saveResumeRecord(toResumeRecord(parsed, selectedJob?.title ?? "")));
       setNotice(parsed.demo ? "已完成演示解析（启发式抽取）" : "解析完成");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "解析失败，请重试");
+      setError(err instanceof Error ? friendlyError(err) : "解析失败，请重试");
     } finally {
       setParseBusy(false);
     }
@@ -180,7 +181,7 @@ export function HrStudio() {
       setQuestions(generated);
       setNotice("面试题已生成");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "面试题生成失败，请重试");
+      setError(err instanceof Error ? friendlyError(err) : "面试题生成失败，请重试");
     } finally {
       setQuestionBusy(false);
     }

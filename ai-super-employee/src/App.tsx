@@ -1,3 +1,4 @@
+import { friendlyError } from "./cloud/friendlyError";
 import { useCallback, useEffect, useState } from "react";
 import {
   Activity,
@@ -406,7 +407,7 @@ function App() {
           <div><a href="#top" className="brand"><span className="brand-mark"><Sparkles size={19} /></span><span className="brand-copy"><strong>超级员工</strong><small>SUPER AGENT OS</small></span></a><p>让企业目标，成为 AI 团队的交付结果。</p></div>
           <div className="footer-links"><div><strong>产品</strong><a href="#workflow">产品能力</a><a href="#demo">交互演示</a><a href="#top">工作台</a></div><div><strong>方案</strong><a href="#industries">行业方案</a><a href="#start">开始使用</a><button type="button" onClick={openConsole}>产品总控台</button></div><div><strong>开始</strong><button type="button" onClick={openConsole}>免费体验</button><button type="button" onClick={() => setShowConsult(true)}>预约演示</button><a href="#top">返回顶部</a></div></div>
         </div>
-        <div className="container footer-bottom"><span>© 2026 SUPER AGENT OS. All rights reserved.</span><span>AI 驱动 · 人类掌控 · 结果导向</span></div>
+        <div className="container footer-bottom"><span>© 2026 SUPER AGENT OS 版权所有</span><span>AI 驱动 · 人类掌控 · 结果导向</span></div>
       </footer>
 
       {showConsult && <ConsultModal onClose={() => setShowConsult(false)} />}
@@ -470,7 +471,7 @@ function ConsultModal({ onClose }: { onClose: () => void }) {
       setState("done");
     } catch (err) {
       setState("idle");
-      setError(err instanceof Error ? err.message : "提交失败，请稍后重试或直接进入工作台");
+      setError(err instanceof Error ? friendlyError(err) : "提交失败，请稍后重试或直接进入工作台");
     }
   };
 

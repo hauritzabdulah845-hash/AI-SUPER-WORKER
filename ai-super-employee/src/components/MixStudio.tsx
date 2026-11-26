@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
@@ -114,7 +115,7 @@ export function MixStudio() {
       setNotice(`已导入 ${added.length} 个素材${skipped.length ? `，跳过 ${skipped.length} 个：${skipped.join("、")}` : ""}`);
       setUploadGroup("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "素材导入失败");
+      setError(err instanceof Error ? friendlyError(err) : "素材导入失败");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -156,7 +157,7 @@ export function MixStudio() {
       setSaved(loadSavedPlans());
       setNotice(result.demo ? "模型不可用，已给出模板方案（结构完整，可直接改）" : "混剪方案已生成");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "方案生成失败");
+      setError(err instanceof Error ? friendlyError(err) : "方案生成失败");
     } finally {
       setBusy(false);
     }

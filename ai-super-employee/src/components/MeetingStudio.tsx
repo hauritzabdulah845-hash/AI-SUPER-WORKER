@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useState } from "react";
 import { ClipboardCopy, Download, LoaderCircle, NotebookPen, Sparkles, Trash2, Upload } from "lucide-react";
 import {
@@ -80,7 +81,7 @@ export function MeetingStudio() {
       setHistory(saveMeetingRecord(toMeetingRecord(minutes)));
       setNotice(minutes.demo ? "已生成演示纪要（启发式抽取）" : "纪要已生成");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "生成失败，请重试");
+      setError(err instanceof Error ? friendlyError(err) : "生成失败，请重试");
     } finally {
       setBusy(false);
     }

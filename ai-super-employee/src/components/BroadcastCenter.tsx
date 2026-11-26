@@ -1,3 +1,4 @@
+import { friendlyError } from "../cloud/friendlyError";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Clock3, LoaderCircle, Play, Plus, Send, Trash2, Users, X } from "lucide-react";
 import type { LeadRow } from "../cloud/api";
@@ -109,7 +110,7 @@ export function BroadcastCenter(props: { leads: LeadRow[]; kfBaseUrl: string; kf
             : `「${plan.name}」完成：${result.detail}`,
         );
       } catch (error) {
-        notify(`发送失败：${error instanceof Error ? error.message : String(error)}`);
+        notify(`发送失败：${friendlyError(error)}`);
       } finally {
         runningRef.current.delete(plan.id);
         setBusyId(null);
