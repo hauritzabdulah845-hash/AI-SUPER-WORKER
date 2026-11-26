@@ -292,6 +292,19 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
   const [overviewGoal, setOverviewGoal] = useState("");
   const [toast, setToast] = useState("");
   const [loading, setLoading] = useState(true);
+  // 第 27 批：云端读取超过 15 秒未完成时，加载提示改为可关闭的慢速提示，不无限转圈。
+  const [loadingSlow, setLoadingSlow] = useState(false);
+  const [loadingDismissed, setLoadingDismissed] = useState(false);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingSlow(false);
+      setLoadingDismissed(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setLoadingSlow(true), 15000);
+    return () => window.clearTimeout(timer);
+  }, [loading]);
   const [selectedTask, setSelectedTask] = useState<AnyTask | null>(null);
   const [selectedSteps, setSelectedSteps] = useState<StepView[]>([]);
   const [stepsLoading, setStepsLoading] = useState(false);
@@ -1838,7 +1851,9 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                   ? user
                     ? `你的云端工作区已就绪，${runningCount} 个任务执行中，${pendingLeads} 条线索待跟进。`
                     : `你的云端工作区已就绪，${runningCount} 个任务执行中，${pendingLeads} 条线索待跟进。绑定账号后数据归属你本人。`
-                  : `集中管理${activeNav}，所有数据来自云端实时读取。`}
+                  : activeNav === "GEO 工作台"
+                    ? "品牌资料与素材在云端工作区；监测记录暂存本机浏览器（最多 60 次），云端同步规划中"
+                    : `集中管理${activeNav}，所有数据来自云端实时读取。`}
               </p>
             </div>
           </div>
@@ -3006,7 +3021,18 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
       )}
 
       {toast && <div className="console-toast">{toast}</div>}
-      {loading && <div className="console-loading"><LoaderCircle size={18} className="spin" />正在读取云端数据…</div>}
+      {loading && !loadingDismissed && (
+        loadingSlow ? (
+          <div className="console-loading console-loading-slow" role="status">
+            <span>云端数据读取较慢，可先使用本机功能</span>
+            <button type="button" className="icon-button" aria-label="关闭加载提示" onClick={() => setLoadingDismissed(true)}>
+              <X size={14} />
+            </button>
+          </div>
+        ) : (
+          <div className="console-loading"><LoaderCircle size={18} className="spin" />正在读取云端数据…</div>
+        )
+      )}
     </div>
   );
 }

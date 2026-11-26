@@ -30,6 +30,7 @@ import {
   removeSnapshot,
   runGeoMonitor,
 } from "../cloud/geomonitor";
+import { friendlyError } from "../cloud/friendlyError";
 
 interface GeoMonitorProps {
   brand: string;
@@ -121,7 +122,11 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
         (skipped.length ? `，${skipped.length} 条因报错跳过未计入` : ""),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "监测失败");
+      // 「全部 N 条都失败」保留上下文，原始技术错误翻译成人话
+      const raw = err instanceof Error ? err.message : "";
+      setError(raw.startsWith("全部")
+        ? `全部问题都失败了，本次不计入趋势。${friendlyError(err)}`
+        : friendlyError(err));
     } finally {
       setBusy(false);
       setProgress("");
@@ -282,7 +287,7 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
       )}
 
       <p className="geo-storage-note">
-        <Database size={12} /> 记录只存在本机浏览器（不上传、不入库），最多保留 60 次。换设备或清缓存会丢失。
+        <Database size={12} /> 品牌资料与素材在云端工作区；监测记录暂存本机浏览器（最多 60 次），云端同步规划中。换设备或清缓存会丢失。
       </p>
     </div>
   );

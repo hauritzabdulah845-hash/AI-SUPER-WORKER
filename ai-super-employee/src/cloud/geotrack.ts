@@ -390,3 +390,107 @@ export function sourceRanking(snapshots: GeoSnapshot[], top = 10): SourceRankRow
     .sort((a, b) => b.count - a.count || a.source.localeCompare(b.source))
     .slice(0, top);
 }
+
+/* ------------------------------------------------------------------ */
+/* 第 27 批：顶部概览条 + 分步导航状态（版面重构，纯函数）              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 首位率（0~1）：本品牌在回答里「第一个被提到」的题目占比。
+ * 有竞品信号时按真实竞速（本品牌首次位置早于所有竞品）；无竞品信号时
+ * 以「出现在回答前 30%」近似首位（旧快照/未填竞品时仍有可比口径）。
+ */
+export function firstPosRate(snapshot: GeoSnapshot): number {
+  if (!snapshot.samples.length) return 0;
+  let first = 0;
+  for (const sample of snapshot.samples) {
+    if (!sample.mentioned || sample.firstPos < 0) continue;
+    const competitors = sample.competitors ?? [];
+    if (competitors.length) {
+      if (competitors.every((c) => !c.mentioned || c.firstPos > sample.firstPos)) first += 1;
+    } else if (sample.answerLength > 0 && sample.firstPos / sample.answerLength <= 0.3) {
+      first += 1;
+    }
+  }
+  return first / snapshot.samples.length;
+}
+
+/** 单次快照里被引用的信源个数（按域名/名称归并去重）。 */
+export function snapshotSourceCount(snapshot: GeoSnapshot): number {
+  const keys = new Set<string>();
+  if (snapshot.sources?.length) {
+    for (const item of snapshot.sources) for (const source of item.sources) keys.add(sourceKey(source));
+  } else {
+    for (const sample of snapshot.samples) for (const source of sample.sources ?? []) keys.add(sourceKey(source));
+  }
+  keys.delete("");
+  return keys.size;
+}
+
+export interface GeoOverview {
+  /** 监测总次数 */
+  runs: number;
+  brand: string;
+  /** 最近一次监测时间（ISO） */
+  latestAt: string;
+  mentionRate: number;
+  /** 与上一次的提及率差值；只有一次记录时为 null */
+  mentionDelta: number | null;
+  firstPosRate: number;
+  firstPosDelta: number | null;
+  /** 本品牌在竞品中的名次（1 起）；未填竞品/旧快照无竞品数据时为 null */
+  competitorRank: number | null;
+  competitorCount: number;
+  /** 最新一次被引用的信源个数（归并去重后） */
+  sourceCount: number;
+}
+
+/** 顶部概览条数据：最新一次快照 + 与上一次的涨跌。无快照返回 null。 */
+export function overviewStats(snapshots: GeoSnapshot[]): GeoOverview | null {
+  if (!snapshots.length) return null;
+  const sorted = [...snapshots].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  const latest = sorted[sorted.length - 1];
+  const previous = sorted.length > 1 ? sorted[sorted.length - 2] : null;
+  const comparison = competitorComparison(latest);
+  const selfRow = comparison.find((row) => row.isSelf);
+  const hasCompetitors = comparison.length > 1;
+  return {
+    runs: sorted.length,
+    brand: latest.brand,
+    latestAt: latest.at,
+    mentionRate: mentionRate(latest),
+    mentionDelta: previous ? mentionRate(latest) - mentionRate(previous) : null,
+    firstPosRate: firstPosRate(latest),
+    firstPosDelta: previous ? firstPosRate(latest) - firstPosRate(previous) : null,
+    competitorRank: hasCompetitors && selfRow ? selfRow.rank : null,
+    competitorCount: hasCompetitors ? comparison.length - 1 : 0,
+    sourceCount: snapshotSourceCount(latest),
+  };
+}
+
+export interface GeoStepInput {
+  /** ①资料体检：体检有结果 */
+  hasAudit: boolean;
+  /** ②拓词选题：有拓词结果或有选题 */
+  hasKeywordsOrTopics: boolean;
+  /** ③监测问题集：问题条数 */
+  questionCount: number;
+  /** ④监测与报告：快照条数 */
+  snapshotCount: number;
+}
+
+/** 四步完成状态（顺序：资料体检 / 拓词选题 / 监测问题集 / 监测与报告）。 */
+export function geoStepStatus(input: GeoStepInput): boolean[] {
+  return [
+    input.hasAudit,
+    input.hasKeywordsOrTopics,
+    input.questionCount > 0,
+    input.snapshotCount > 0,
+  ];
+}
+
+/** 第一个未完成步骤（1 起）；全部完成时停在最后一步（监测与报告）。 */
+export function firstIncompleteStep(status: boolean[]): number {
+  const index = status.findIndex((done) => !done);
+  return index === -1 ? status.length : index + 1;
+}

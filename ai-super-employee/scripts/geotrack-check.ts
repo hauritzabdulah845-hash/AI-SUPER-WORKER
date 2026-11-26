@@ -9,11 +9,16 @@ import {
   avgPositionRatio,
   comparability,
   computeTrend,
+  firstIncompleteStep,
+  firstPosRate,
+  geoStepStatus,
   mentionRate,
+  overviewStats,
   pct,
   polylineAttr,
   questionDeltas,
   rateSeries,
+  snapshotSourceCount,
   sparklinePoints,
   type GeoSnapshot,
   type MentionSample,
@@ -163,6 +168,45 @@ console.log("\n--- pct 格式化 ---");
   ok("0 → 0%", pct(0) === "0%");
   ok("0.667 → 67%", pct(0.667) === "67%");
   ok("1 → 100%", pct(1) === "100%");
+}
+
+console.log("\n--- 第 27 批：概览条与分步状态 ---");
+{
+  ok("空快照概览为 null", overviewStats([]) === null);
+
+  const s1 = snap("2026-01-01T00:00:00Z", [sample("q1", true), sample("q2", false)]);
+  const s2 = snap("2026-02-01T00:00:00Z", [sample("q1", true), sample("q2", true)], {
+    competitors: [{ brand: "竞品甲", mentionRate: 0.5, firstPos: 30 }],
+    sources: [{ question: "q1", sources: ["https://example.com/a", "https://www.example.com/b", "知乎专栏"] }],
+  });
+  const ov = overviewStats([s1, s2]);
+  ok("概览取最新一次", ov !== null && ov.runs === 2 && ov.mentionRate === 1);
+  ok("概览涨跌为 +50 个百分点", ov !== null && ov.mentionDelta === 0.5);
+  ok("概览竞品名次第 1 名", ov !== null && ov.competitorRank === 1 && ov.competitorCount === 1);
+  ok("概览信源按域名归并为 2", ov !== null && ov.sourceCount === 2, `count=${ov?.sourceCount}`);
+  ok("单次快照涨跌为 null", overviewStats([s1])?.mentionDelta === null);
+  ok("无竞品名次为 null", overviewStats([s1])?.competitorRank === null);
+  ok("snapshotSourceCount 空为 0", snapshotSourceCount(s1) === 0);
+
+  // 首位率：无竞品信号时按回答前 30% 近似（firstPos=10/100 命中，firstPos=80 不算首位）
+  const posSnap = snap("2026-03-01T00:00:00Z", [
+    sample("q1", true, 1, 10, 100),
+    sample("q2", true, 1, 80, 100),
+    sample("q3", false),
+  ]);
+  ok("首位率（位置近似）= 1/3", Math.abs(firstPosRate(posSnap) - 1 / 3) < 1e-9);
+
+  // 首位率：有竞品信号时按竞速（竞品更靠前则不算首位）
+  const raceSnap = snap("2026-04-01T00:00:00Z", [
+    { ...sample("q1", true, 1, 5, 100), competitors: [{ brand: "竞品甲", mentioned: true, hits: 1, firstPos: 20 }] },
+    { ...sample("q2", true, 1, 50, 100), competitors: [{ brand: "竞品甲", mentioned: true, hits: 1, firstPos: 3 }] },
+  ]);
+  ok("首位率（竞品竞速）= 1/2", firstPosRate(raceSnap) === 0.5);
+
+  ok("步骤状态判定", JSON.stringify(geoStepStatus({ hasAudit: true, hasKeywordsOrTopics: false, questionCount: 3, snapshotCount: 0 })) === "[true,false,true,false]");
+  ok("首个未完成 = 第 2 步", firstIncompleteStep([true, false, true, false]) === 2);
+  ok("全未完成 = 第 1 步", firstIncompleteStep([false, false, false, false]) === 1);
+  ok("全部完成停在最后一步", firstIncompleteStep([true, true, true, true]) === 4);
 }
 
 console.log(`\n${fail === 0 ? "全部通过" : `${fail} 项失败`}（${pass} 通过 / ${fail} 失败）`);

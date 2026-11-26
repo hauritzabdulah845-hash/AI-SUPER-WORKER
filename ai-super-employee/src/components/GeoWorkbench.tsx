@@ -1,10 +1,15 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowDownRight,
+  ArrowUpRight,
+  Check,
+  ChevronDown,
   ClipboardCopy,
   Download,
   FileText,
   Globe2,
   LoaderCircle,
+  Minus,
   Radar,
   Sparkles,
   Target,
@@ -32,7 +37,45 @@ import {
 import { navToSlug } from "../nav";
 import { getKnowledgeDoc, type KnowledgeRow } from "../cloud/api";
 import { GeoMonitor } from "./GeoMonitor";
-import { MAX_QUESTIONS } from "../cloud/geomonitor";
+import { MAX_QUESTIONS, loadSnapshots, loadSnapshotsFor } from "../cloud/geomonitor";
+import { friendlyError } from "../cloud/friendlyError";
+import {
+  firstIncompleteStep,
+  geoStepStatus,
+  overviewStats,
+  pct,
+} from "../cloud/geotrack";
+
+const STEP_STORAGE_KEY = "ai-employee:geo-step";
+const GEO_STEPS = ["资料体检", "拓词选题", "监测问题集", "监测与报告"] as const;
+
+function readStoredStep(): number | null {
+  try {
+    const raw = Number(window.localStorage.getItem(STEP_STORAGE_KEY));
+    return raw >= 1 && raw <= GEO_STEPS.length ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function formatOverviewTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+/** 概览条涨跌箭头：null（无上次）不显示，0 显示持平。 */
+function DeltaMark({ delta }: { delta: number | null }) {
+  if (delta === null) return null;
+  if (Math.abs(delta) < 0.005) return <span className="geo-ov-delta flat"><Minus size={12} />持平</span>;
+  const up = delta > 0;
+  return (
+    <span className={`geo-ov-delta ${up ? "up" : "down"}`}>
+      {up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+      {Math.abs(delta * 100).toFixed(0)} 个百分点
+    </span>
+  );
+}
 
 interface GeoWorkbenchProps {
   knowledge: KnowledgeRow[];
@@ -85,6 +128,37 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
   const [topics, setTopics] = useState<GeoTopic[]>([]);
   const [topicsDemo, setTopicsDemo] = useState(false);
   const [mentionTests, setMentionTests] = useState<GeoMentionTest[]>([]);
+  // 第 27 批：分步导航。优先恢复上次停留步骤，否则定位第一个未完成步骤。
+  const [activeStep, setActiveStep] = useState<number>(() => {
+    const stored = readStoredStep();
+    if (stored) return stored;
+    const snapshotCount = loadSnapshots().length;
+    return firstIncompleteStep(geoStepStatus({
+      hasAudit: false,
+      hasKeywordsOrTopics: false,
+      questionCount: 0,
+      snapshotCount,
+    }));
+  });
+  const [snapshotsVersion, setSnapshotsVersion] = useState(0);
+  const [selectedTopics, setSelectedTopics] = useState<number[]>([]);
+  const [expandedTopics, setExpandedTopics] = useState<number[]>([]);
+  const monitorRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STEP_STORAGE_KEY, String(activeStep));
+    } catch {
+      /* 隐私模式忽略 */
+    }
+  }, [activeStep]);
+
+  // 概览条数据：填了品牌按品牌读本机快照，未填时读全部快照（展示最近一次的品牌）。
+  const overviewSnapshots = useMemo(() => {
+    void snapshotsVersion; // 监测跑完后由 GeoMonitor 回调 bump，触发重读本机快照
+    return brand.trim() ? loadSnapshotsFor(brand) : loadSnapshots();
+  }, [brand, snapshotsVersion]);
+  const overview = useMemo(() => overviewStats(overviewSnapshots), [overviewSnapshots]);
 
   const loadFromKnowledge = async () => {
     if (!knowledge.length) {
@@ -106,7 +180,7 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
       if (!brand) setBrand(picked[0]?.title.slice(0, 16) ?? "");
       setNotice("资料已填入，点击「开始体检」。");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "资料载入失败");
+      setError(friendlyError(err));
     } finally {
       setBusy("");
     }
@@ -121,23 +195,23 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
       setAudit(result);
       setNotice(`体检完成：${result.score} 分`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "体检失败");
+      setError(friendlyError(err));
     } finally {
       setBusy("");
     }
   };
 
-  const runAssets = async () => {
+  const runAssets = async (keywordsOverride?: string) => {
     setBusy("assets");
     setError("");
     setNotice("");
     try {
-      const result = await generateGeoAssets({ brand, keywords, material });
+      const result = await generateGeoAssets({ brand, keywords: keywordsOverride ?? keywords, material });
       setAssets(result);
       setNotice(`素材已生成：${result.facts.length} 条事实卡 · ${result.faq.length} 组 FAQ`);
       if (!questionsText) setQuestionsText(defaultGeoQuestions(brand, keywords).join("\n"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "素材生成失败");
+      setError(friendlyError(err));
     } finally {
       setBusy("");
     }
@@ -155,7 +229,7 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
       setTopics([]);
       setNotice(`拓词完成：${result.keywords.length} 条长尾词${result.demo ? "（模板降级演示）" : ""}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "拓词失败");
+      setError(friendlyError(err));
     } finally {
       setBusy("");
     }
@@ -170,9 +244,11 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
       const result = await generateTopics({ brand, keywords: expanded.keywords });
       setTopics(result.topics);
       setTopicsDemo(result.demo);
+      setSelectedTopics([]);
+      setExpandedTopics([]);
       setNotice(`选题已生成：${result.topics.length} 条${result.demo ? "（模板降级演示）" : ""}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "选题生成失败");
+      setError(friendlyError(err));
     } finally {
       setBusy("");
     }
@@ -184,6 +260,51 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
     if (!lines.length) { setError("选题还没有目标问题，先生成选题。"); return; }
     setQuestionsText(lines.join("\n"));
     setNotice(`已把 ${lines.length} 条选题目标问题填入监测问题集`);
+  };
+
+  /** 单条选题 → 生成素材：目标词带入素材生成，回到第 1 步看结果。 */
+  const topicToAssets = (topic: GeoTopic) => {
+    setKeywords(topic.keyword);
+    setActiveStep(1);
+    void runAssets(topic.keyword);
+  };
+
+  /** 单条选题 → 加入监测问题集：追加目标问题，遵守上限并去重。 */
+  const topicToQuestion = (topic: GeoTopic) => {
+    const question = topic.targetQuestion.trim();
+    if (!question) { setError("这条选题还没有目标问题。"); return; }
+    const current = questionsText.split("\n").map((item) => item.trim()).filter(Boolean);
+    if (current.includes(question)) { setNotice("这条问题已在监测问题集里"); return; }
+    if (current.length >= MAX_QUESTIONS) {
+      setError(`监测问题集已满（最多 ${MAX_QUESTIONS} 条），先删一条再加。`);
+      return;
+    }
+    setQuestionsText([...current, question].join("\n"));
+    setNotice(`已加入监测问题集（共 ${current.length + 1} 条）`);
+  };
+
+  const toggleTopicSelected = (index: number) => {
+    setSelectedTopics((prev) => (prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]));
+  };
+
+  const toggleTopicExpanded = (index: number) => {
+    setExpandedTopics((prev) => (prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]));
+  };
+
+  const exportSelectedTopics = () => {
+    const picked = topics.filter((_, index) => selectedTopics.includes(index));
+    if (!picked.length) { setError("先勾选要导出的选题。"); return; }
+    downloadMarkdown(
+      `GEO选题-所选${picked.length}条-${new Date().toISOString().slice(0, 10)}.md`,
+      topicsMarkdown({ brand, topics: picked, demo: topicsDemo }),
+    );
+    setNotice(`已导出所选 ${picked.length} 条选题`);
+  };
+
+  /** 概览条引导按钮：切到第 4 步并滚到监测区。 */
+  const goToMonitor = () => {
+    setActiveStep(4);
+    window.setTimeout(() => monitorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   };
 
   /** 把高优先级长尾词回填为目标搜索词，再走现有素材生成。 */
@@ -204,7 +325,7 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
       const hit = results.filter((item) => item.mentioned).length;
       setNotice(`提及测试完成：${hit}/${results.length} 条命中`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "提及测试失败");
+      setError(friendlyError(err));
     } finally {
       setBusy("");
     }
@@ -220,8 +341,80 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
 
   const questionList = questionsText.split("\n").map((item) => item.trim()).filter(Boolean);
 
+  const stepStatus = geoStepStatus({
+    hasAudit: audit !== null,
+    hasKeywordsOrTopics: Boolean(expanded?.keywords.length) || topics.length > 0,
+    questionCount: questionList.length,
+    snapshotCount: overviewSnapshots.length,
+  });
+
   return (
     <section className="geo-layout">
+      {/* 第 27 批：顶部数据概览条（常驻，先看数据再填表） */}
+      <div className="console-card geo-overview">
+        {overview ? (
+          <>
+            <div className="geo-ov-item">
+              <small>最新提及率</small>
+              <strong>{pct(overview.mentionRate)}</strong>
+              <DeltaMark delta={overview.mentionDelta} />
+            </div>
+            <div className="geo-ov-item">
+              <small>首位率</small>
+              <strong>{pct(overview.firstPosRate)}</strong>
+              <DeltaMark delta={overview.firstPosDelta} />
+            </div>
+            {overview.competitorRank !== null && (
+              <div className="geo-ov-item">
+                <small>竞品名次</small>
+                <strong>第 {overview.competitorRank} 名</strong>
+                <span className="geo-ov-sub">共 {overview.competitorCount + 1} 个品牌</span>
+              </div>
+            )}
+            <div className="geo-ov-item">
+              <small>被引用信源</small>
+              <strong>{overview.sourceCount} 个</strong>
+              <span className="geo-ov-sub">最新一次监测</span>
+            </div>
+            <div className="geo-ov-item">
+              <small>最近监测</small>
+              <strong className="geo-ov-time">{formatOverviewTime(overview.latestAt)}</strong>
+              <span className="geo-ov-sub">{overview.brand} · 共 {overview.runs} 次</span>
+            </div>
+          </>
+        ) : (
+          <div className="geo-ov-empty">
+            <span>还没有监测数据。先完成资料体检与问题集，跑一次监测建立基线，这里会显示提及率、首位率与竞品名次。</span>
+            <button type="button" className="button button-primary" onClick={goToMonitor}>先跑一次监测建立基线</button>
+          </div>
+        )}
+      </div>
+
+      {/* 第 27 批：分步导航（一次只显一张卡，概览条常驻） */}
+      <div className="geo-steps" role="tablist" aria-label="GEO 工作步骤">
+        {GEO_STEPS.map((label, index) => {
+          const step = index + 1;
+          const done = stepStatus[index];
+          return (
+            <button
+              type="button"
+              key={label}
+              role="tab"
+              aria-selected={activeStep === step}
+              className={`geo-step${activeStep === step ? " active" : ""}${done ? " done" : ""}`}
+              onClick={() => setActiveStep(step)}
+            >
+              <span className="geo-step-no">{done ? <Check size={13} /> : step}</span>
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {error && <p className="geo-error geo-global-msg">{error}</p>}
+      {notice && <p className="geo-notice geo-global-msg">{notice}</p>}
+
+      <div className="geo-step-panel" hidden={activeStep !== 1}>
       <div className="console-card geo-inputs">
         <div className="console-card-header">
           <div>
@@ -265,8 +458,6 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
               {busy === "assets" ? <LoaderCircle size={15} className="spin" /> : <Sparkles size={15} />}生成 GEO 素材
             </button>
           </div>
-          {error && <p className="geo-error">{error}</p>}
-          {notice && <p className="geo-notice">{notice}</p>}
         </div>
       </div>
 
@@ -348,7 +539,9 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
           )}
         </div>
       )}
+      </div>
 
+      <div className="geo-step-panel" hidden={activeStep !== 2}>
       <div className="console-card geo-keywords-card">
         <div className="console-card-header">
           <div>
@@ -405,19 +598,78 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
           <div className="geo-topics">
             <div className="geo-topics-head">
               <h3>选题大纲（{topics.length} 条{topicsDemo ? " · 模板降级演示" : ""}）</h3>
-              <button type="button" className="text-link" onClick={topicsToQuestions}>目标问题填入监测问题集</button>
-            </div>
-            {topics.map((topic, index) => (
-              <div className="geo-topic-item" key={`${topic.title}-${index}`}>
-                <strong>{index + 1}. {topic.title}</strong>
-                <small>目标问题：{topic.targetQuestion || "—"}</small>
-                <ul>{topic.sections.map((section) => <li key={section}>{section}</li>)}</ul>
+              <div className="geo-topics-tools">
+                <label className="geo-topic-all">
+                  <input
+                    type="checkbox"
+                    checked={selectedTopics.length === topics.length && topics.length > 0}
+                    onChange={(event) => setSelectedTopics(event.target.checked ? topics.map((_, i) => i) : [])}
+                  />
+                  全选
+                </label>
+                <button type="button" className="text-link" onClick={exportSelectedTopics} disabled={!selectedTopics.length}>
+                  导出所选{selectedTopics.length ? `（${selectedTopics.length}）` : ""}
+                </button>
+                <button type="button" className="text-link" onClick={topicsToQuestions}>目标问题填入监测问题集</button>
               </div>
-            ))}
+            </div>
+            <ul className="geo-topic-list">
+              {topics.map((topic, index) => {
+                const open = expandedTopics.includes(index);
+                return (
+                  <li className="geo-topic-row" key={`${topic.title}-${index}`}>
+                    <div className="geo-topic-main">
+                      <input
+                        type="checkbox"
+                        aria-label={`勾选选题 ${topic.title}`}
+                        checked={selectedTopics.includes(index)}
+                        onChange={() => toggleTopicSelected(index)}
+                      />
+                      <span className="geo-topic-no">{index + 1}</span>
+                      <span className="geo-topic-text">
+                        <strong>{topic.title}</strong>
+                        <small>目标问题：{topic.targetQuestion || "—"}</small>
+                      </span>
+                      <em className="geo-topic-intent">{topic.intent}</em>
+                      <button
+                        type="button"
+                        className="text-link geo-topic-toggle"
+                        aria-expanded={open}
+                        onClick={() => toggleTopicExpanded(index)}
+                      >
+                        大纲<ChevronDown size={13} className={open ? "geo-chevron open" : "geo-chevron"} />
+                      </button>
+                    </div>
+                    {open && (
+                      <ul className="geo-topic-sections">
+                        {topic.sections.map((section) => <li key={section}>{section}</li>)}
+                      </ul>
+                    )}
+                    <div className="geo-topic-actions">
+                      <button type="button" className="text-link" onClick={() => topicToAssets(topic)} disabled={busy !== ""}>
+                        生成素材
+                      </button>
+                      <button
+                        type="button"
+                        className="text-link"
+                        onClick={() => { window.location.hash = `#/console/${navToSlug("内容工厂")}`; }}
+                      >
+                        去内容工厂
+                      </button>
+                      <button type="button" className="text-link" onClick={() => topicToQuestion(topic)}>
+                        加入监测问题
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         )}
       </div>
+      </div>
 
+      <div className="geo-step-panel" hidden={activeStep !== 3}>
       <div className="console-card geo-questions-card">
         <div className="console-card-header">
           <div>
@@ -461,8 +713,15 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
           </div>
         )}
       </div>
+      </div>
 
-      <GeoMonitor brand={brand} questions={questionList} />
+      <div className="geo-step-panel" hidden={activeStep !== 4} ref={monitorRef}>
+        <GeoMonitor
+          brand={brand}
+          questions={questionList}
+          onSnapshot={() => setSnapshotsVersion((v) => v + 1)}
+        />
+      </div>
     </section>
   );
 }
