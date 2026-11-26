@@ -29,11 +29,16 @@ import {
   latestComparablePair,
   removeSnapshot,
   runGeoMonitor,
+  metricsOfSnapshot,
+  bucketsOfSnapshot,
 } from "../cloud/geomonitor";
+import { coverageGaps, sampleAdvice, sourceGap } from "../cloud/geoscore";
 
 interface GeoMonitorProps {
   brand: string;
   questions: string[];
+  /** 自有域名（可留空）：用于判断 AI 引用的信源里有多少是自己的站点 */
+  ownDomain?: string;
   /** 监测跑完后把最新快照交给外层，便于一起导出 */
   onSnapshot?: (snapshot: GeoSnapshot) => void;
 }
@@ -71,7 +76,7 @@ function Sparkline({ series }: { series: number[] }) {
  * 解决的核心问题：原来的提及率测试只给一个数，用户无法判断
  * 「这次 50%」到底比上次好还是差，也无法证明自己做的优化有没有用。
  */
-export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
+export function GeoMonitor({ brand, questions, ownDomain = "", onSnapshot }: GeoMonitorProps) {
   const [history, setHistory] = useState<GeoSnapshot[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
@@ -98,6 +103,16 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
   const comparison = useMemo(() => (latest ? competitorComparison(latest) : []), [latest]);
   const topSources = useMemo(() => sourceRanking(history), [history]);
 
+  // 第 27 批：四项指标 + 样本可信度 + 五层覆盖 + 信源缺口。
+  // 旧快照缺 metrics/buckets 字段时由 geomonitor 按样本还原，并标记 legacy 说明口径。
+  const metricView = useMemo(() => metricsOfSnapshot(latest), [latest]);
+  const bucketView = useMemo(() => bucketsOfSnapshot(latest), [latest]);
+  const buckets = bucketView.buckets;
+  const gaps = useMemo(() => coverageGaps(buckets), [buckets]);
+  const adequacy = useMemo(() => sampleAdvice(latest?.samples.length ?? 0), [latest]);
+  const sources = useMemo(() => (topSources.length ? sourceGap(topSources, ownDomain) : null), [topSources, ownDomain]);
+  const standings = latest?.standings ?? [];
+
   const runNow = async () => {
     if (!brand.trim()) { setError("请先填写品牌/企业名称。"); return; }
     if (!questions.length) { setError("请先填写至少 1 条测试问题（可先在下方生成默认问题）。"); return; }
@@ -118,6 +133,7 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
       onSnapshot?.(snapshot);
       setNotice(
         `本次提及率 ${pct(mentionRate(snapshot))}（${snapshot.samples.filter((s) => s.mentioned).length}/${snapshot.samples.length}）` +
+        (snapshot.metrics ? ` · 推荐率 ${pct(snapshot.metrics.recommendRate)} · 首推率 ${pct(snapshot.metrics.topRate)}` : "") +
         (skipped.length ? `，${skipped.length} 条因报错跳过未计入` : ""),
       );
     } catch (err) {
@@ -186,6 +202,67 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
 
           <p className="geo-trend-summary">{trend.summary}</p>
 
+          {/* 第 27 批：四项指标。提及 ≠ 推荐 ≠ 首推，三个数分开看才知道问题出在哪 */}
+          {metricView.metrics && (
+            <div className="geo-metrics">
+              <div className="geo-metrics-head">
+                <h3>核心指标（最新一次）</h3>
+                <span className={`geo-adequacy ${adequacy.adequacy}`}>{adequacy.label}</span>
+              </div>
+              <div className="geo-metrics-grid">
+                {[
+                  { key: "mention", label: "提及率", value: metricView.metrics.mentionRate, hint: "回答里出现了品牌名" },
+                  { key: "recommend", label: "推荐率", value: metricView.metrics.recommendRate, hint: "被正向推荐，不是顺带一提" },
+                  { key: "top", label: "首推率", value: metricView.metrics.topRate, hint: "排在竞品前面，用户真能看到" },
+                  { key: "negative", label: "负面率", value: metricView.metrics.negativeRate, hint: "被提及但语境负面" },
+                ].map((item) => (
+                  <div className={`geo-metric ${item.key}${item.key === "negative" && item.value > 0 ? " warn" : ""}`} key={item.key}>
+                    <strong>{pct(item.value)}</strong>
+                    <span>{item.label}</span>
+                    <small>{item.hint}</small>
+                  </div>
+                ))}
+              </div>
+              {metricView.legacy && (
+                <p className="geo-hint">
+                  <TriangleAlert size={13} /> 这条是旧版本记录：只存了命中信号，没有回答原文，推荐率与负面率无法还原，按 0 显示（不代表当时没有）。新跑一次即可得到完整口径。
+                </p>
+              )}
+              {metricView.metrics.negativeRate > 0 && (
+                <p className="geo-hint warn-text">
+                  <TriangleAlert size={13} /> 有 {pct(metricView.metrics.negativeRate)} 的回答在负面语境里提到你，优先处理，它比提升提及率更急。
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* 五层意图覆盖：哪一层完全没测，比总体提及率更能说明下一步做什么 */}
+          {buckets.some((bucket) => bucket.count > 0) && (
+            <div className="geo-buckets">
+              <h3>问题词覆盖（五层意图）</h3>
+              <table>
+                <thead><tr><th>层级</th><th>问题数</th><th>提及率</th><th>推荐率</th><th>首推率</th></tr></thead>
+                <tbody>
+                  {buckets.map((bucket) => (
+                    <tr key={bucket.level} className={bucket.count === 0 ? "empty" : ""}>
+                      <td><strong>{bucket.level}</strong> {bucket.label}<small>{bucket.hint}</small></td>
+                      <td>{bucket.count || "0"}</td>
+                      <td>{bucket.count ? pct(bucket.mentionRate) : "—"}</td>
+                      <td>{bucket.count ? pct(bucket.recommendRate) : "—"}</td>
+                      <td>{bucket.count ? pct(bucket.topRate) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {bucketView.legacy && <p className="geo-hint">旧记录无推荐倾向数据，推荐率按 0 显示。</p>}
+              {gaps.length > 0 && (
+                <p className="geo-hint">
+                  覆盖缺口：{gaps.map((gap) => `${gap.level} ${gap.label}（${gap.empty ? "未覆盖" : `${gap.count} 条`}）`).join("、")}。建议每层至少 2 条问题。
+                </p>
+              )}
+            </div>
+          )}
+
           {comparison.length > 1 && (
             <div className="geo-compare">
               <h3>竞品对比（最新一次）</h3>
@@ -212,6 +289,27 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
             </div>
           )}
 
+          {standings.length > 1 && (
+            <div className="geo-standings">
+              <h3>首推率排名（含竞品）</h3>
+              <ul>
+                {[...standings].sort((a, b) => a.rank - b.rank).map((row) => (
+                  <li key={row.brand} className={row.isSelf ? "self" : ""}>
+                    <em>{row.rank}</em>
+                    <span>{row.brand}{row.isSelf ? "（本品牌）" : ""}</span>
+                    <strong>{pct(row.metrics.topRate)}</strong>
+                    {!row.isSelf && (
+                      <small className={row.deltaTop > 0 ? "geo-delta-up" : row.deltaTop < 0 ? "geo-delta-down" : ""}>
+                        {row.deltaTop > 0 ? `领先你 ${Math.abs(row.deltaTop * 100).toFixed(0)} 个百分点` : row.deltaTop < 0 ? `落后你 ${Math.abs(row.deltaTop * 100).toFixed(0)} 个百分点` : "持平"}
+                      </small>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <p className="geo-hint">排序按首推率 → 推荐率 → 提及率。只按提及率排会让「提了但排第 3」看起来像势均力敌。</p>
+            </div>
+          )}
+
           {topSources.length > 0 && (
             <div className="geo-sources">
               <h3>被引用信源 TOP</h3>
@@ -220,6 +318,14 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
                   <li key={row.source}><span>{row.source}</span><small>{row.count} 次</small></li>
                 ))}
               </ol>
+              {sources && (
+                <p className={`geo-hint${sources.ownCount === 0 && sources.total > 0 && ownDomain.trim() ? " warn-text" : ""}`}>
+                  {sources.verdict}
+                  {sources.total > 0 && ownDomain.trim() && (
+                    <> 自有 {sources.ownCount} 次 / 第三方 {sources.thirdPartyCount} 次。</>
+                  )}
+                </p>
+              )}
             </div>
           )}
 

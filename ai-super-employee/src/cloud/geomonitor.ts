@@ -10,6 +10,15 @@
 import { askLLM } from "./runner";
 import { loadChannel } from "./provider";
 import {
+  brandStandings,
+  buildIntentBuckets,
+  evalAnswer,
+  summarize,
+  type BrandEval,
+  type GeoMetrics,
+  type IntentBucket,
+} from "./geoscore";
+import {
   analyzeAnswer,
   analyzeAnswerMulti,
   buildCompetitorStats,
@@ -62,6 +71,8 @@ export async function runGeoMonitor(input: {
 
   const samples: MentionSample[] = [];
   const skipped: { question: string; reason: string }[] = [];
+  // 与 samples 同序的逐条评估，用于第 27 批的四项指标（推荐率/首推率/负面率）
+  const evals: { question: string; self: ReturnType<typeof evalAnswer>["self"]; competitors: ReturnType<typeof evalAnswer>["competitors"] }[] = [];
 
   for (let i = 0; i < questions.length; i += 1) {
     const question = questions[i];
@@ -86,6 +97,8 @@ export async function runGeoMonitor(input: {
       const sources = extractSources(text);
       if (sources.length) sample.sources = sources;
       samples.push(sample);
+      // 同一份回答再跑一遍「推荐倾向 + 首推位置」判定：与提及率同源，口径不会分叉
+      evals.push({ question, ...evalAnswer(text, brand, competitors) });
     } catch (err) {
       // 关键：不能把失败当成"未被提及"，否则趋势会被网络抖动作假
       skipped.push({ question, reason: err instanceof Error ? err.message : String(err) });
@@ -107,9 +120,62 @@ export async function runGeoMonitor(input: {
     ...(samples.some((s) => s.sources?.length)
       ? { sources: samples.map((s) => ({ question: s.question, sources: s.sources ?? [] })) }
       : {}),
+    // 第 27 批：四项指标 + 竞品排名 + 五层覆盖（全部来自本轮真实样本）
+    metrics: summarize(evals.map((row) => row.self)),
+    standings: brandStandings(brand, competitors, evals),
+    buckets: buildIntentBuckets(evals),
   };
 
   return { snapshot, skipped };
+}
+
+/* ------------------------------------------------------------------ */
+/* 旧快照兼容：无 metrics/buckets 字段时按样本信号还原指标               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 把旧快照的样本还原成 BrandEval（用于补算指标）。
+ *
+ * 旧快照只存了命中信号与回答字数，**没有存回答原文**，所以：
+ *   · 提及率 / 首推率 —— 可以准确还原（位置与竞品位置都在）；
+ *   · 推荐率 / 负面率 —— 无原文可判，只能记 0，并由调用方标注「历史口径」，
+ *     绝不拿 0 去冒充「以前推荐率就是 0」。
+ */
+export function legacyEvals(snapshot: GeoSnapshot): { question: string; self: BrandEval; legacy: boolean }[] {
+  return snapshot.samples.map((sample) => {
+    const rivals = sample.competitors ?? [];
+    const top = sample.mentioned
+      && sample.firstPos >= 0
+      && rivals.every((c) => !c.mentioned || c.firstPos < 0 || sample.firstPos < c.firstPos);
+    return {
+      question: sample.question,
+      legacy: true,
+      self: {
+        brand: snapshot.brand,
+        mentioned: sample.mentioned,
+        hits: sample.hits,
+        firstPos: sample.firstPos,
+        recommended: false,
+        polarity: "neutral" as const,
+        top,
+        answerLength: sample.answerLength,
+      },
+    };
+  });
+}
+
+/** 快照指标：新快照直接用落库值，旧快照按样本还原（并标记 legacy 供 UI 说明） */
+export function metricsOfSnapshot(snapshot: GeoSnapshot | null): { metrics: GeoMetrics | null; legacy: boolean } {
+  if (!snapshot) return { metrics: null, legacy: false };
+  if (snapshot.metrics) return { metrics: snapshot.metrics, legacy: false };
+  return { metrics: summarize(legacyEvals(snapshot).map((row) => row.self)), legacy: true };
+}
+
+/** 快照五层覆盖：新快照用落库值，旧快照用样本重建 */
+export function bucketsOfSnapshot(snapshot: GeoSnapshot | null): { buckets: IntentBucket[]; legacy: boolean } {
+  if (!snapshot) return { buckets: [], legacy: false };
+  if (snapshot.buckets) return { buckets: snapshot.buckets, legacy: false };
+  return { buckets: buildIntentBuckets(legacyEvals(snapshot)), legacy: true };
 }
 
 /* ------------------------------------------------------------------ */

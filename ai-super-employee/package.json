@@ -34,7 +34,8 @@
     "test:catchup": "tsx scripts/catchup-check.ts",
     "test:docparse": "tsx scripts/docparse-check.ts",
     "test:geokeywords": "tsx scripts/geokeywords-check.ts",
-    "test:geocompare": "tsx scripts/geocompare-check.ts"
+    "test:geocompare": "tsx scripts/geocompare-check.ts",
+    "test:geoscore": "tsx scripts/geoscore-check.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

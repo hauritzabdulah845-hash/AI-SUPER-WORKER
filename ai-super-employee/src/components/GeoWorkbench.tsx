@@ -29,6 +29,14 @@ import {
   type GeoExpandResult,
   type GeoTopic,
 } from "../cloud/geokeywords";
+import {
+  auditReadability,
+  buildBrief,
+  classifyIntent,
+  intentLabel,
+  type ContentBrief,
+  type ReadabilityResult,
+} from "../cloud/geoscore";
 import { navToSlug } from "../nav";
 import { getKnowledgeDoc, type KnowledgeRow } from "../cloud/api";
 import { GeoMonitor } from "./GeoMonitor";
@@ -85,6 +93,11 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
   const [topics, setTopics] = useState<GeoTopic[]>([]);
   const [topicsDemo, setTopicsDemo] = useState(false);
   const [mentionTests, setMentionTests] = useState<GeoMentionTest[]>([]);
+  const [ownDomain, setOwnDomain] = useState("");
+  const [draft, setDraft] = useState("");
+  const [readability, setReadability] = useState<ReadabilityResult | null>(null);
+  const [brief, setBrief] = useState<ContentBrief | null>(null);
+  const [briefQuestion, setBriefQuestion] = useState("");
 
   const loadFromKnowledge = async () => {
     if (!knowledge.length) {
@@ -210,12 +223,62 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
     }
   };
 
+  /** 内容可引用性体检：纯规则，零模型调用，改完可以再跑一次验证分数变化 */
+  const runReadability = () => {
+    setError("");
+    setNotice("");
+    if (!draft.trim()) {
+      setError("请先粘贴要体检的正文（准备发布的文章、落地页文案或 FAQ）。");
+      return;
+    }
+    const result = auditReadability(draft);
+    setReadability(result);
+    setNotice(`可引用性体检完成：${result.score} 分`);
+  };
+
+  /** 生成内容 Brief：按目标问题自动分层，产出结构与红线，交给内容工厂照着写 */
+  const runBrief = () => {
+    setError("");
+    setNotice("");
+    const question = (briefQuestion || questionList[0] || "").trim();
+    if (!question) {
+      setError("请先填写目标问题（可直接用监测问题集里的一条）。");
+      return;
+    }
+    const result = buildBrief({
+      brand,
+      question,
+      competitors: [],
+      facts: assets?.facts ?? [],
+    });
+    setBrief(result);
+    setNotice(`Brief 已生成：${result.intent} ${result.intentLabel} 层 · 约 ${result.wordTarget} 字`);
+  };
+
+  /** 把 Brief 回填成草稿，直接在体检卡里对照检查 */
+  const briefToDraft = () => {
+    if (!brief) return;
+    const lines = [
+      `# ${brief.title}`,
+      "",
+      `结论：${brief.conclusion}`,
+      "",
+      ...brief.sections.flatMap((section) => [
+        `## ${section.heading}`,
+        ...section.points.map((point) => `- ${point}`),
+        "",
+      ]),
+    ];
+    setDraft(lines.join("\n"));
+    setNotice("Brief 骨架已填入下方草稿区，补完事实后再跑一次体检");
+  };
+
   const exportAll = () => {
     downloadMarkdown(
       `GEO工作台-${new Date().toISOString().slice(0, 10)}.md`,
-      geoMarkdown({ brand, audit, assets, tests: null }),
+      geoMarkdown({ brand, audit, assets, tests: mentionTests.length ? mentionTests : null }),
     );
-    setNotice("已导出 Markdown（体检 + 素材）");
+    setNotice("已导出 Markdown（体检 + 素材 + 提及测试）");
   };
 
   const questionList = questionsText.split("\n").map((item) => item.trim()).filter(Boolean);
@@ -241,6 +304,10 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
           <label>
             目标搜索词（逗号分隔）
             <input value={keywords} onChange={(event) => setKeywords(event.target.value)} placeholder="例如：现煮茶饮, 杭州下午茶" />
+          </label>
+          <label>
+            自有域名（可选，用于判断 AI 引用的信源里有多少是你自己的站）
+            <input value={ownDomain} onChange={(event) => setOwnDomain(event.target.value)} placeholder="例如：example.com" />
           </label>
           <label className="geo-material">
             企业资料（可直接粘贴，或从知识库载入）
@@ -462,7 +529,88 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
         )}
       </div>
 
-      <GeoMonitor brand={brand} questions={questionList} />
+      {/* 第 27 批：内容 Brief + 可引用性体检（纯规则，零模型调用，可复算） */}
+      <div className="console-card geo-brief-card">
+        <div className="console-card-header">
+          <div>
+            <h2><FileText size={15} /> 内容 Brief 与可引用性体检</h2>
+            <p>Brief 定「写什么」（按目标问题自动归到五层意图，附结构与红线）；体检查「写得能不能被 AI 摘」，规则化打分，改完可复算。</p>
+          </div>
+          <button type="button" className="button button-secondary" onClick={runBrief} disabled={!brand && !questionList.length}>
+            <Sparkles size={14} />生成 Brief
+          </button>
+        </div>
+
+        <label className="geo-questions">
+          目标问题（留空则用监测问题集第一条）
+          <input value={briefQuestion} onChange={(event) => setBriefQuestion(event.target.value)} placeholder="例如：现煮茶饮设备哪家好？" />
+        </label>
+
+        {brief && (
+          <div className="geo-brief">
+            <div className="geo-brief-head">
+              <strong>{brief.title}</strong>
+              <span className={`geo-intent-badge lv-${brief.intent.toLowerCase()}`}>{brief.intent} {brief.intentLabel}</span>
+              <small>约 {brief.wordTarget} 字 · 建议渠道：{brief.channels.join("、")}</small>
+              <button type="button" className="text-link" onClick={briefToDraft}>填入草稿区</button>
+            </div>
+            <p className="geo-brief-conclusion">{brief.conclusion}</p>
+            <div className="geo-brief-sections">
+              {brief.sections.map((section) => (
+                <div className="geo-brief-section" key={section.heading}>
+                  <strong>{section.heading}</strong>
+                  <ul>{section.points.map((point) => <li key={point}>{point}</li>)}</ul>
+                </div>
+              ))}
+            </div>
+            <div className="geo-brief-rules">
+              <div>
+                <h3>必须包含</h3>
+                <ul>{brief.mustInclude.map((item) => <li key={item}>{item}</li>)}</ul>
+              </div>
+              <div>
+                <h3>禁止</h3>
+                <ul>{brief.mustAvoid.map((item) => <li key={item}>{item}</li>)}</ul>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <label className="geo-questions">
+          待体检正文（粘贴准备发布的文章或落地页文案）
+          <textarea
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            rows={8}
+            placeholder="把要发布的正文粘进来。体检看六项：事实密度、结论先行、分块粒度、结构化、问答对齐、时效标记。"
+          />
+        </label>
+        <div className="geo-actions">
+          <button type="button" className="button button-primary" onClick={runReadability} disabled={!draft.trim()}>
+            <Radar size={15} />体检可引用性
+          </button>
+          <small className="geo-hint">共 {draft.length} 字 · {draft ? `${classifyIntent(draft.split("\n")[0] || "")} ${intentLabel(classifyIntent(draft.split("\n")[0] || ""))} 倾向` : "未输入"}</small>
+        </div>
+
+        {readability && (
+          <div className="geo-readability">
+            <div className="geo-readability-head">
+              <strong className={readability.score >= 80 ? "good" : readability.score >= 60 ? "mid" : "low"}>{readability.score}</strong>
+              <small>可引用性总分（满分 100，事实密度与结论先行权重最高）</small>
+            </div>
+            {readability.findings.map((item) => (
+              <div className={`geo-finding${item.score < 70 ? " weak" : ""}`} key={item.key}>
+                <span><strong>{item.label}</strong><b>{item.score}</b></span>
+                <i><em style={{ width: `${Math.max(4, item.score)}%` }} /></i>
+                <small>{item.note}</small>
+                {item.fix && <p className="geo-fix">修法：{item.fix}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <GeoMonitor brand={brand} questions={questionList} ownDomain={ownDomain} />
     </section>
   );
 }

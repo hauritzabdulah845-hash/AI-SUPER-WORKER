@@ -9523,3 +9523,134 @@ ol.meeting-plain-list { list-style: decimal; }
 .geo-sources li { color: var(--ink-3); font-size: 12.5px; }
 .geo-sources li span { margin-right: var(--space-2); }
 .geo-sources li small { color: var(--ink-5); font-size: 11px; }
+
+/* ==================== GEO 指标体系（第 27 批） ==================== */
+.geo-metrics,
+.geo-buckets,
+.geo-standings,
+.geo-brief,
+.geo-readability { margin: 0 0 var(--space-4); }
+
+.geo-metrics-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; margin: 0 0 var(--space-2);
+}
+.geo-metrics-head h3,
+.geo-buckets h3,
+.geo-standings h3 { margin: 0; color: var(--ink-2); font-size: 13.5px; }
+
+.geo-adequacy {
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; line-height: 1.5;
+  background: var(--surface-muted); color: var(--ink-5);
+}
+.geo-adequacy.insufficient { background: #fdeaea; color: #c93c48; }
+.geo-adequacy.weak { background: #fdf1dc; color: #a56a00; }
+.geo-adequacy.ok { background: var(--success-soft); color: var(--success-strong); }
+
+.geo-metrics-grid {
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+}
+.geo-metric {
+  display: grid; gap: 2px; padding: 11px 13px;
+  border: 1px solid var(--line); border-radius: 11px;
+  background: var(--surface);
+}
+.geo-metric strong { color: var(--ink-1); font-size: 21px; font-weight: 750; line-height: 1.15; }
+.geo-metric span { color: var(--ink-3); font-size: 12px; font-weight: 650; }
+.geo-metric small { color: var(--ink-5); font-size: 11px; line-height: 1.5; }
+.geo-metric.top { border-color: rgba(124, 77, 255, .28); background: var(--brand-soft); }
+.geo-metric.top strong { color: var(--purple); }
+.geo-metric.negative.warn { border-color: #f3c9cd; background: #fdf4f4; }
+.geo-metric.negative.warn strong { color: #c93c48; }
+
+.geo-buckets table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.geo-buckets th {
+  padding: 6px 8px; text-align: left; color: var(--ink-5);
+  font-size: 11px; border-bottom: 1px solid var(--line);
+}
+.geo-buckets td { padding: 7px 8px; color: var(--ink-3); border-bottom: 1px solid var(--ink-6); vertical-align: top; }
+.geo-buckets td strong { color: var(--ink-2); font-weight: 700; }
+.geo-buckets td small { display: block; color: var(--ink-5); font-size: 11px; line-height: 1.5; }
+.geo-buckets tr.empty td { color: var(--ink-5); background: var(--surface-muted); }
+
+.geo-standings ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.geo-standings li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 11px; border: 1px solid var(--line); border-radius: 10px;
+  font-size: 12.5px; color: var(--ink-3);
+}
+.geo-standings li.self { border-color: rgba(124, 77, 255, .28); background: var(--brand-soft); color: var(--ink-2); font-weight: 650; }
+.geo-standings li em {
+  min-width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px; background: var(--surface-muted); color: var(--ink-3);
+  font-size: 11px; font-style: normal; font-weight: 700;
+}
+.geo-standings li.self em { background: var(--purple); color: #fff; }
+.geo-standings li span { flex: 1; }
+.geo-standings li strong { color: var(--ink-1); font-size: 13px; }
+.geo-standings li small { color: var(--ink-5); font-size: 11px; }
+
+.warn-text { color: #b8434e; }
+
+.geo-intent-badge {
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--brand-soft); color: var(--purple);
+  font-size: 11px; font-weight: 700;
+}
+.geo-brief-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 8px;
+}
+.geo-brief-head strong { color: var(--ink-1); font-size: 13px; }
+.geo-brief-head small { color: var(--ink-5); font-size: 11px; }
+.geo-brief-conclusion {
+  margin: 0 0 10px; padding: 10px 12px;
+  background: var(--surface-muted); border-left: 3px solid var(--purple); border-radius: 0 9px 9px 0;
+  color: var(--ink-2); font-size: 12.5px; line-height: 1.65;
+}
+.geo-brief-sections {
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+.geo-brief-section { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.geo-brief-section strong { display: block; margin: 0 0 5px; color: var(--ink-2); font-size: 12px; }
+.geo-brief-section ul,
+.geo-brief-rules ul { margin: 0; padding-left: 17px; display: grid; gap: 3px; }
+.geo-brief-section li,
+.geo-brief-rules li { color: var(--ink-3); font-size: 11.5px; line-height: 1.6; }
+.geo-brief-rules {
+  display: grid; gap: 10px; margin-top: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.geo-brief-rules h3 { margin: 0 0 5px; color: var(--ink-3); font-size: 11px; font-weight: 700; }
+.geo-brief-rules > div { padding: 10px 12px; border-radius: 10px; background: var(--surface-muted); }
+.geo-brief-rules > div:last-child { background: #fdf4f4; }
+
+.geo-readability { margin-top: 12px; }
+.geo-readability-head { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+.geo-readability-head strong {
+  min-width: 54px; padding: 7px 12px; border-radius: 10px;
+  font-size: 18px; font-weight: 750; line-height: 1; text-align: center;
+}
+.geo-readability-head strong.good { color: var(--success-strong); background: var(--success-soft); }
+.geo-readability-head strong.mid { color: #a56a00; background: #fdf1dc; }
+.geo-readability-head strong.low { color: #c93c48; background: #fdeaea; }
+.geo-readability-head small { color: var(--ink-5); font-size: 11px; line-height: 1.5; }
+
+.geo-finding { display: grid; gap: 4px; padding: 9px 0; border-bottom: 1px solid var(--ink-6); }
+.geo-finding:last-child { border-bottom: 0; }
+.geo-finding > span { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.geo-finding strong { color: var(--ink-2); font-size: 12px; }
+.geo-finding b { color: var(--purple); font-size: 12px; }
+.geo-finding.weak b { color: #c93c48; }
+.geo-finding > i { display: block; height: 5px; border-radius: 999px; background: var(--surface-muted); overflow: hidden; }
+.geo-finding > i em { display: block; height: 100%; border-radius: 999px; background: var(--purple); }
+.geo-finding.weak > i em { background: #e39a3c; }
+.geo-finding small { color: var(--ink-5); font-size: 11px; line-height: 1.55; }
+.geo-fix { margin: 2px 0 0; color: var(--ink-3); font-size: 11px; line-height: 1.6; }
+
+@media (max-width: 900px) {
+  .geo-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

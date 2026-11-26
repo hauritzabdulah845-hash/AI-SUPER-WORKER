@@ -1,3 +1,5 @@
+import type { BrandStanding, GeoMetrics, IntentBucket } from "./geoscore";
+
 /**
  * GEO 持续监测与趋势追踪（纯函数层，无 IO，可单测）。
  *
@@ -57,6 +59,15 @@ export interface GeoSnapshot {
   competitors?: CompetitorStat[];
   /** 可选（第 26 批新增）：按问题存的模型参考来源，旧快照无此字段 */
   sources?: { question: string; sources: string[] }[];
+  /**
+   * 可选（第 27 批新增）：本品牌四项指标快照（提及/推荐/首推/负面）。
+   * 旧快照无此字段时报表回退到只算提及率，不报错。
+   */
+  metrics?: GeoMetrics;
+  /** 可选（第 27 批新增）：本品牌 vs 竞品的首推率排名（含差值） */
+  standings?: BrandStanding[];
+  /** 可选（第 27 批新增）：五层意图覆盖与分层指标 */
+  buckets?: IntentBucket[];
 }
 
 /** 单次提及率（0~1） */

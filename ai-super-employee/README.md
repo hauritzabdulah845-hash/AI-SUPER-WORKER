@@ -83,6 +83,7 @@ ai-super-employee/
 | `npm run test:office` / `test:zip` | PPT/文档真实渲染 / 交付物打包字节校验 |
 | `npm run test:kf` / `test:ops` / `test:ops2` / `test:ops3` | 客服规则与名单 / 审批与导入 / 检索与用量 / 打包与排序 |
 | `npm run test:geotrack` / `test:geomstore` | GEO 提及率趋势 / 监测存储 |
+| `npm run test:geoscore` / `test:geokeywords` / `test:geocompare` | GEO 四项指标·五层意图·信源缺口·可引用性体检 / 拓词选题 / 竞品对比与来源 |
 | `npm run test:font` / `test:sidebar` / `test:modal` / `test:modallayout` | 字号地板 / 侧栏 / 弹窗行为与布局 |
 
 ## 接入清单（配置后置）
