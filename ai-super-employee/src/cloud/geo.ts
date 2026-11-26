@@ -1,5 +1,6 @@
 import { askLLM } from "./runner";
 import { extractSources } from "./geotrack";
+import { MAX_QUESTIONS } from "./geomonitor";
 
 /**
  * GEO（Generative Engine Optimization）能力层：
@@ -203,7 +204,7 @@ export async function testBrandMention(input: {
 }): Promise<GeoMentionTest[]> {
   const brand = input.brand.trim();
   if (!brand) throw new Error("请先填写品牌/企业名称，否则无法判断是否被提及。");
-  const questions = input.questions.map((item) => item.trim()).filter(Boolean).slice(0, 8);
+  const questions = input.questions.map((item) => item.trim()).filter(Boolean).slice(0, MAX_QUESTIONS);
   if (!questions.length) throw new Error("请至少填写 1 条测试问题。");
 
   const results: GeoMentionTest[] = [];

@@ -9583,3 +9583,41 @@ ol.meeting-plain-list { list-style: decimal; }
   .geo-topic-actions { padding-left: 0; }
   .geo-topic-text { min-width: 140px; }
 }
+
+/* ===== 第二十八批：GEO 词库管理与问题集逐条编辑（评审 P1） ===== */
+.geo-library { display: grid; gap: var(--space-3); margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--line); }
+.geo-library-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.geo-library-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 650; }
+.geo-library-add { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.geo-library-add input { flex: 1; min-width: 180px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink-2); font-size: 12.5px; }
+.geo-library-add select,
+.geo-library-row select,
+.geo-q-row select { padding: 7px 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink-3); font-size: 12.5px; }
+.geo-library-add .button { white-space: nowrap; flex: none; }
+.geo-library-group { display: grid; gap: var(--space-2); }
+.geo-library-group h3 { margin: 0; color: var(--ink-2); font-size: 13.5px; }
+.geo-library-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.geo-library-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: var(--space-2) var(--space-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.geo-library-word { display: grid; gap: 1px; flex: 1; min-width: 160px; }
+.geo-library-word strong { color: var(--ink-2); font-size: 13.5px; }
+.geo-library-word small { color: var(--ink-5); font-size: 11px; }
+.geo-library-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.geo-library-del { display: inline-flex; align-items: center; gap: 3px; color: var(--danger-strong); }
+
+.geo-q-tools { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; padding: 10px 19px 0; }
+.geo-q-list { list-style: none; margin: 0; padding: 12px 19px 0; display: grid; gap: var(--space-2); }
+.geo-q-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.geo-q-no { color: var(--ink-5); font-size: 12.5px; font-weight: 650; min-width: 18px; text-align: right; flex: none; }
+.geo-q-row input { flex: 1; min-width: 180px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink-2); font-size: 12.5px; }
+.geo-q-del { display: inline-flex; align-items: center; gap: 3px; color: var(--danger-strong); flex: none; }
+.geo-q-paste { padding: 12px 19px 0; }
+.geo-q-paste summary { color: var(--ink-3); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.geo-q-paste textarea { width: 100%; box-sizing: border-box; margin-top: var(--space-2); padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink-2); font-size: 12.5px; line-height: 1.6; resize: vertical; }
+.geo-q-paste .geo-actions { padding: 10px 0 0; }
+
+@media (max-width: 640px) {
+  .geo-library-add input { min-width: 140px; }
+  .geo-library-word { min-width: 120px; }
+  .geo-q-row input { min-width: 140px; }
+  .geo-library-actions { gap: var(--space-2); }
+}

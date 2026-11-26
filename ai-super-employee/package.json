@@ -35,7 +35,8 @@
     "test:docparse": "tsx scripts/docparse-check.ts",
     "test:geokeywords": "tsx scripts/geokeywords-check.ts",
     "test:geocompare": "tsx scripts/geocompare-check.ts",
-    "test:friendlyerror": "tsx scripts/friendlyerror-check.ts"
+    "test:friendlyerror": "tsx scripts/friendlyerror-check.ts",
+    "test:keywordlibrary": "tsx scripts/keywordlibrary-check.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

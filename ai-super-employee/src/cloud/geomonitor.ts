@@ -21,8 +21,11 @@ import {
 const STORAGE_KEY = "supe-geo-snapshots";
 /** 最多保留 60 次快照（约每 3 天一次 = 半年），防止 localStorage 膨胀 */
 const MAX_SNAPSHOTS = 60;
-/** 单次最多测多少条问题：串行调用，太多会等很久且烧配额 */
-export const MAX_QUESTIONS = 8;
+/**
+ * 单次最多测多少条问题（第 28 批由 8 提到 20，评审 P1：8 条样本太小、趋势可信度低）。
+ * 监测逐条串行调用模型，问题越多耗时越长、配额消耗越大——UI 在问题集处有提示。
+ */
+export const MAX_QUESTIONS = 20;
 
 /** 把当前通道映射成可比对的口径标签 */
 function currentChannelLabel(): string {

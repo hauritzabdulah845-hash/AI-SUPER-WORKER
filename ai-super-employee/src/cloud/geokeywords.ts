@@ -154,6 +154,13 @@ const TOPIC_SECTION_TEMPLATES: Record<GeoKeywordIntent, (word: string) => string
   避坑: () => ["最常见的 3 个坑", "每个坑的识别方法", "避开的正确做法", "已经踩坑怎么补救"],
 };
 
+/** 词面 → 监测问题问法：已是问句则原样，否则补「？」（选题 targetQuestion 与词库转问题共用同一口径）。 */
+export function wordToQuestion(word: string): string {
+  const text = word.trim();
+  if (!text) return "";
+  return text.endsWith("？") || text.endsWith("?") ? text : `${text}？`;
+}
+
 /** 启发式选题（降级）：按词套大纲模板，目标问题即词面问法。 */
 export function fallbackTopics(keywords: GeoKeyword[], max = MAX_TOPICS): GeoTopicsResult {
   const picked = [...keywords]
@@ -165,7 +172,7 @@ export function fallbackTopics(keywords: GeoKeyword[], max = MAX_TOPICS): GeoTop
       keyword: item.word,
       intent: item.intent,
       sections: TOPIC_SECTION_TEMPLATES[item.intent](item.word),
-      targetQuestion: item.word.endsWith("？") || item.word.endsWith("?") ? item.word : `${item.word}？`,
+      targetQuestion: wordToQuestion(item.word),
     })),
     demo: true,
   };
