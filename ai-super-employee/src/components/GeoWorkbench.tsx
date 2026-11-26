@@ -13,6 +13,7 @@ import {
   Minus,
   Plus,
   Radar,
+  RefreshCw,
   Sparkles,
   Target,
   TestTube2,
@@ -90,6 +91,18 @@ import {
   overviewStats,
   pct,
 } from "../cloud/geotrack";
+import { getSessionUser } from "../cloud/client";
+import {
+  geoSyncStatusLabel,
+  loadGeoWorkspace,
+  loadSyncState,
+  markLocalUpdated,
+  saveGeoWorkspace,
+  scheduleGeoPush,
+  syncAllGeoData,
+  syncGeoData,
+  type GeoSyncState,
+} from "../cloud/geosync";
 
 const STEP_STORAGE_KEY = "ai-employee:geo-step";
 const GEO_STEPS = ["资料体检", "拓词选题", "监测问题集", "监测与报告"] as const;
@@ -158,25 +171,32 @@ async function copyText(text: string): Promise<boolean> {
  * 所有调用走 askLLM（与任务执行同通道），资料来自知识库或手工粘贴。
  */
 export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
-  const [brand, setBrand] = useState("");
-  const [keywords, setKeywords] = useState("");
+  // 第 32 批：品牌工作区元信息本机持久化，刷新自动恢复品牌名与目标搜索词（结清第 28 批缺口）。
+  const [brand, setBrand] = useState(() => loadGeoWorkspace()?.brand ?? "");
+  const [keywords, setKeywords] = useState(() => loadGeoWorkspace()?.keywords ?? "");
   const [material, setMaterial] = useState("");
   const [materialNote, setMaterialNote] = useState("");
   // 第 28 批：问题集逐条编辑 + 本机持久化（按品牌分键，打开页面自动恢复）。
-  const [questionItems, setQuestionItems] = useState<GeoQuestionItem[]>(() => loadQuestions(""));
+  const [questionItems, setQuestionItems] = useState<GeoQuestionItem[]>(() => loadQuestions(loadGeoWorkspace()?.brand ?? ""));
   const [pasteText, setPasteText] = useState("");
   // 第 28 批：词库（按品牌分键存本机）；brandKey 是当前存取用的品牌键，品牌输入失焦时切换并载入。
-  const [brandKey, setBrandKey] = useState("");
-  const [library, setLibrary] = useState<KeywordLibraryEntry[]>(() => loadLibrary(""));
+  const [brandKey, setBrandKey] = useState(() => loadGeoWorkspace()?.brand ?? "");
+  const [library, setLibrary] = useState<KeywordLibraryEntry[]>(() => loadLibrary(loadGeoWorkspace()?.brand ?? ""));
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [manualWord, setManualWord] = useState("");
   const [manualIntent, setManualIntent] = useState<GeoKeywordIntent>("咨询");
   const [manualPriority, setManualPriority] = useState<GeoKeywordPriority>("中");
   // 第 29 批：品牌素材三件套（按品牌分键存本机）与稿件审核队列。
-  const [brandAssets, setBrandAssets] = useState<BrandAssets>(() => loadBrandAssets(""));
+  const [brandAssets, setBrandAssets] = useState<BrandAssets>(() => loadBrandAssets(loadGeoWorkspace()?.brand ?? ""));
   const [brandAssetsOpen, setBrandAssetsOpen] = useState(false);
-  const [reviewQueue, setReviewQueue] = useState<GeoReviewItem[]>(() => loadReviewQueue(""));
+  const [reviewQueue, setReviewQueue] = useState<GeoReviewItem[]>(() => loadReviewQueue(loadGeoWorkspace()?.brand ?? ""));
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
+  // 第 32 批：云端同步状态（本机模式/同步中/已同步·时间），登录后自动同步，未登录静默本机。
+  const [syncState, setSyncState] = useState<GeoSyncState>(() => loadSyncState());
+  const [syncing, setSyncing] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
+  // 首次同步完成前不回推，避免把刚载入的本机旧数据标成最新冲掉云端新数据
+  const suppressPushRef = useRef(true);
   const [busy, setBusy] = useState<"" | "load" | "audit" | "assets" | "test" | "expand" | "topics" | "topic-one" | "extract">("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -212,19 +232,89 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
     }
   }, [activeStep]);
 
-  // 词库与问题集随改随存本机（按当前品牌键）。
-  useEffect(() => { saveLibrary(brandKey, library); }, [brandKey, library]);
-  useEffect(() => { saveQuestions(brandKey, questionItems); }, [brandKey, questionItems]);
+  // 词库与问题集随改随存本机（按当前品牌键）；第 32 批：存后标记更新时间并防抖上行。
+  useEffect(() => {
+    saveLibrary(brandKey, library);
+    if (!suppressPushRef.current) {
+      markLocalUpdated("library", brandKey);
+      scheduleGeoPush(brandKey);
+    }
+  }, [brandKey, library]);
+  useEffect(() => {
+    saveQuestions(brandKey, questionItems);
+    if (!suppressPushRef.current) {
+      markLocalUpdated("questions", brandKey);
+      scheduleGeoPush(brandKey);
+    }
+  }, [brandKey, questionItems]);
 
-  /** 品牌键切换（输入失焦/知识库载入时）：载入该品牌的词库与问题集。 */
+  /** 第 32 批：同步一轮（先上行再下行）并把下行结果载回界面；未登录/失败静默本机。 */
+  const runGeoSync = async (targetBrand: string, manual = false) => {
+    setSyncing(true);
+    try {
+      const user = await getSessionUser().catch(() => null);
+      setLoggedIn(Boolean(user?.id));
+      const result = targetBrand.trim()
+        ? await syncGeoData(targetBrand)
+        : await syncAllGeoData();
+      setSyncState({ mode: result.mode, lastSyncAt: result.lastSyncAt });
+      // 下行可能更新了本机数据：静默重载（不触发回推），换设备时恢复工作区品牌
+      suppressPushRef.current = true;
+      let key = targetBrand.trim();
+      if (!key) {
+        const workspace = loadGeoWorkspace();
+        if (workspace?.brand) {
+          key = workspace.brand;
+          setBrand(workspace.brand);
+          setKeywords(workspace.keywords);
+          setBrandKey(workspace.brand);
+        }
+      }
+      setLibrary(loadLibrary(key));
+      setQuestionItems(loadQuestions(key));
+      setBrandAssets(loadBrandAssets(key));
+      setReviewQueue(loadReviewQueue(key));
+      setSnapshotsVersion((v) => v + 1);
+      setTimeout(() => { suppressPushRef.current = false; }, 100);
+      if (manual) {
+        setError("");
+        setNotice(result.mode === "synced" ? "已同步到云端" : result.message);
+      }
+    } finally {
+      setSyncing(false);
+    }
+  };
+  const runGeoSyncRef = useRef(runGeoSync);
+  runGeoSyncRef.current = runGeoSync;
+
+  // 打开工作台时同步一轮（登录后下行合并；未登录直接本机模式，不打扰）
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void runGeoSyncRef.current(loadGeoWorkspace()?.brand ?? "");
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  /** 品牌键切换（输入失焦/知识库载入时）：载入该品牌的词库与问题集，并持久化工作区。 */
   const applyBrandKey = (nextBrand: string) => {
     const key = nextBrand.trim();
+    saveGeoWorkspace({ brand: key, keywords, materialRef: materialNote });
+    scheduleGeoPush(key);
     if (key === brandKey) return;
+    suppressPushRef.current = true;
     setBrandKey(key);
     setLibrary(loadLibrary(key));
     setQuestionItems(loadQuestions(key));
     setBrandAssets(loadBrandAssets(key));
     setReviewQueue(loadReviewQueue(key));
+    setTimeout(() => { suppressPushRef.current = false; }, 100);
+    void runGeoSyncRef.current(key);
+  };
+
+  /** 目标搜索词失焦时持久化工作区元信息（品牌名/搜索词/资料引用）。 */
+  const persistWorkspace = () => {
+    saveGeoWorkspace({ brand: brandKey || brand, keywords, materialRef: materialNote });
+    scheduleGeoPush(brandKey || brand);
   };
 
   /* ---------- 第 29 批：品牌素材三件套 ---------- */
@@ -244,9 +334,11 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
     }));
   };
 
-  /** 三件套随改随存本机（失焦时落盘，避免多行输入中途被归一化打断）。 */
+  /** 三件套随改随存本机（失焦时落盘，避免多行输入中途被归一化打断）；第 32 批存后防抖上行。 */
   const persistBrandAssets = () => {
     saveBrandAssets(brandKey, brandAssets);
+    markLocalUpdated("brandAssets", brandKey);
+    scheduleGeoPush(brandKey);
   };
 
   /** 从企业资料提取信息卡片：提取到的非空字段覆盖，空字段保留已填内容。 */
@@ -268,6 +360,8 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
         };
         const next = { ...prev, card: merged };
         saveBrandAssets(brandKey, next);
+        markLocalUpdated("brandAssets", brandKey);
+        scheduleGeoPush(brandKey);
         return next;
       });
       setBrandAssetsOpen(true);
@@ -297,6 +391,8 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
       assets: brandAssets,
     });
     setReviewQueue(loadReviewQueue(brandKey || brand));
+    markLocalUpdated("reviewQueue", brandKey || brand);
+    scheduleGeoPush(brandKey || brand);
     const failed = item.checks.filter((check) => !check.pass);
     setError("");
     setNotice(failed.length
@@ -308,6 +404,8 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
     try {
       const next = updateReviewItem(brandKey || brand, item.id, action, { note: rejectNotes[item.id] ?? "" });
       setReviewQueue(next);
+      markLocalUpdated("reviewQueue", brandKey || brand);
+      scheduleGeoPush(brandKey || brand);
       setError("");
       setNotice(action === "approve" ? `《${item.title}》已通过，可分发` : action === "reject" ? `《${item.title}》已驳回` : `《${item.title}》已${action === "submit" ? "重新送审" : "退回草稿"}`);
     } catch (err) {
@@ -715,6 +813,23 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
         })}
       </div>
 
+      {/* 第 32 批：云端同步状态条（本机模式/同步中/已同步·时间）+ 手动立即同步 */}
+      <div className="geo-sync-bar" role="status">
+        <span className="geo-sync-label">
+          {syncing ? "同步中…" : geoSyncStatusLabel(syncState, loggedIn)}
+          <small>GEO 数据本机优先保存，登录后自动同步到云端（监测最多保留 60 次）</small>
+        </span>
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={() => void runGeoSyncRef.current(brandKey || brand, true)}
+          disabled={syncing}
+        >
+          {syncing ? <LoaderCircle size={14} className="spin" /> : <RefreshCw size={14} />}
+          立即同步
+        </button>
+      </div>
+
       {error && <p className="geo-error geo-global-msg">{error}</p>}
       {notice && <p className="geo-notice geo-global-msg">{notice}</p>}
 
@@ -737,7 +852,7 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
           </label>
           <label>
             目标搜索词（逗号分隔）
-            <input value={keywords} onChange={(event) => setKeywords(event.target.value)} placeholder="例如：现煮茶饮, 杭州下午茶" />
+            <input value={keywords} onChange={(event) => setKeywords(event.target.value)} onBlur={persistWorkspace} placeholder="例如：现煮茶饮, 杭州下午茶" />
           </label>
           <label className="geo-material">
             企业资料（可直接粘贴，或从知识库载入）
@@ -1038,7 +1153,7 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
                     <button
                       type="button"
                       className="text-link geo-library-del"
-                      onClick={() => setReviewQueue(removeReviewItem(brandKey || brand, item.id))}
+                      onClick={() => { setReviewQueue(removeReviewItem(brandKey || brand, item.id)); markLocalUpdated("reviewQueue", brandKey || brand); scheduleGeoPush(brandKey || brand); }}
                     >
                       <Trash2 size={13} />删除
                     </button>
@@ -1381,6 +1496,9 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
           brand={brand}
           questions={questionList}
           onSnapshot={() => setSnapshotsVersion((v) => v + 1)}
+          syncLabel={syncing ? "同步中…" : geoSyncStatusLabel(syncState, loggedIn)}
+          syncing={syncing}
+          onSyncNow={() => void runGeoSyncRef.current(brandKey || brand, true)}
         />
       </div>
     </section>

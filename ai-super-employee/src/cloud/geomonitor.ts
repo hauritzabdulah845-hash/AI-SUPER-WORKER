@@ -18,9 +18,9 @@ import {
   type MentionSample,
 } from "./geotrack";
 
-const STORAGE_KEY = "supe-geo-snapshots";
+export const STORAGE_KEY = "supe-geo-snapshots";
 /** 最多保留 60 次快照（约每 3 天一次 = 半年），防止 localStorage 膨胀 */
-const MAX_SNAPSHOTS = 60;
+export const MAX_SNAPSHOTS = 60;
 /**
  * 单次最多测多少条问题（第 28 批由 8 提到 20，评审 P1：8 条样本太小、趋势可信度低）。
  * 监测逐条串行调用模型，问题越多耗时越长、配额消耗越大——UI 在问题集处有提示。

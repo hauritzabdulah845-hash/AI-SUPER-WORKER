@@ -1,4 +1,5 @@
 import { friendlyError } from "../cloud/friendlyError";
+import { geoSyncStatusLabel, loadSyncState } from "../cloud/geosync";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
@@ -247,6 +248,13 @@ interface ConsoleProps {
 
 export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总控", onNavChange }: ConsoleProps) {
   const [activeNav, setActiveNav] = useState(slugToNav(initialNav));
+  // 第 32 批：GEO 同步状态变化时刷新页头副标题（状态由 geosync 落盘后广播）
+  const [, setGeoSyncTick] = useState(0);
+  useEffect(() => {
+    const onGeoSyncState = () => setGeoSyncTick((tick) => tick + 1);
+    window.addEventListener("ai-employee:geo-sync-state", onGeoSyncState);
+    return () => window.removeEventListener("ai-employee:geo-sync-state", onGeoSyncState);
+  }, []);
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [tasks, setTasks] = useState<AnyTask[]>([]);
@@ -1853,7 +1861,7 @@ export default function Console({ onBack, user, onSignedIn, initialNav = "AI 总
                     ? `你的云端工作区已就绪，${runningCount} 个任务执行中，${pendingLeads} 条线索待跟进。`
                     : `你的云端工作区已就绪，${runningCount} 个任务执行中，${pendingLeads} 条线索待跟进。绑定账号后数据归属你本人。`
                   : activeNav === "GEO 工作台"
-                    ? "品牌资料与素材在云端工作区；监测记录暂存本机浏览器（最多 60 次），云端同步规划中"
+                    ? `品牌资料与素材在云端工作区；GEO 数据本机优先保存（监测最多 60 次），${geoSyncStatusLabel(loadSyncState(), Boolean(user))}`
                     : `集中管理${activeNav}，所有数据来自云端实时读取。`}
               </p>
             </div>

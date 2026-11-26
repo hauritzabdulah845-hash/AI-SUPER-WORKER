@@ -41,6 +41,7 @@ import {
   runGeoMonitor,
 } from "../cloud/geomonitor";
 import { friendlyError } from "../cloud/friendlyError";
+import { removeGeoSnapshotRemote, scheduleGeoPush } from "../cloud/geosync";
 import {
   GEO_MONITOR_FREQUENCIES,
   buildGeoMonitorPipeline,
@@ -55,6 +56,10 @@ interface GeoMonitorProps {
   questions: string[];
   /** 监测跑完后把最新快照交给外层，便于一起导出 */
   onSnapshot?: (snapshot: GeoSnapshot) => void;
+  /** 第 32 批：云端同步状态文案（本机模式/同步中/已同步·时间），由工作台统一维护 */
+  syncLabel?: string;
+  syncing?: boolean;
+  onSyncNow?: () => void;
 }
 
 function formatTime(iso: string): string {
@@ -236,7 +241,7 @@ function CitationSection({ statuses, hasSnapshots }: { statuses: DraftCitationSt
  * 解决的核心问题：原来的提及率测试只给一个数，用户无法判断
  * 「这次 50%」到底比上次好还是差，也无法证明自己做的优化有没有用。
  */
-export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
+export function GeoMonitor({ brand, questions, onSnapshot, syncLabel, syncing, onSyncNow }: GeoMonitorProps) {
   const [history, setHistory] = useState<GeoSnapshot[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
@@ -318,6 +323,7 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
       });
       // 必须先落盘再更新 UI：只改 state 的话刷新页面记录就没了（典型漏写）
       appendSnapshot(snapshot);
+      scheduleGeoPush(brand);
       setHistory(loadSnapshotsFor(brand));
       onSnapshot?.(snapshot);
       setNotice(
@@ -338,10 +344,12 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
 
   const remove = (id: string) => {
     setHistory(removeSnapshot(id).filter((row) => row.brand === brand));
+    void removeGeoSnapshotRemote(id);
     setNotice("已删除该次记录");
   };
 
   const clearAll = () => {
+    history.forEach((row) => { void removeGeoSnapshotRemote(row.id); });
     setHistory(clearSnapshotsFor(brand));
     setNotice("已清空该品牌的全部监测记录");
   };
@@ -518,7 +526,16 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
       {history.length > 0 && showSample && <SampleReport />}
 
       <p className="geo-storage-note">
-        <Database size={12} /> 品牌资料与素材在云端工作区；监测记录暂存本机浏览器（最多 60 次），云端同步规划中。换设备或清缓存会丢失。
+        <Database size={12} />
+        <span>
+          品牌资料与素材在云端工作区；监测记录本机优先保存（最多 60 次），登录后自动同步到云端。
+          {syncLabel ? `当前状态：${syncLabel}。` : ""}
+        </span>
+        {onSyncNow && (
+          <button type="button" className="text-link" onClick={onSyncNow} disabled={syncing}>
+            {syncing ? "同步中…" : "立即同步"}
+          </button>
+        )}
       </p>
     </div>
   );
