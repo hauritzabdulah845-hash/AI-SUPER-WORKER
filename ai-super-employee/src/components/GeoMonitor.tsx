@@ -31,6 +31,14 @@ import {
   runGeoMonitor,
 } from "../cloud/geomonitor";
 import { friendlyError } from "../cloud/friendlyError";
+import {
+  GEO_MONITOR_FREQUENCIES,
+  buildGeoMonitorPipeline,
+  findGeoMonitorPipeline,
+  type GeoMonitorFrequency,
+} from "../cloud/geoschedule";
+import { loadPipelines, nextRunLabel, savePipelines } from "../cloud/pipeline";
+import { navToSlug } from "../nav";
 
 interface GeoMonitorProps {
   brand: string;
@@ -81,6 +89,31 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
   const [expanded, setExpanded] = useState(false);
   const [competitorText, setCompetitorText] = useState("");
   const competitorList = competitorText.split(/[,，、\s]+/).map((item) => item.trim()).filter(Boolean).slice(0, 3);
+  // 第 29 批：周期监测模板（复用 pipeline 定时任务，运行时读当前问题集）。
+  const [scheduleFreq, setScheduleFreq] = useState<GeoMonitorFrequency>("weekly");
+  const [pipelinesVersion, setPipelinesVersion] = useState(0);
+  const geoSchedule = useMemo(() => {
+    void pipelinesVersion;
+    return findGeoMonitorPipeline(loadPipelines(), brand);
+  }, [brand, pipelinesVersion]);
+
+  const createGeoSchedule = () => {
+    if (!brand.trim()) { setError("请先填写品牌/企业名称，再创建周期监测。"); return; }
+    if (geoSchedule) { setNotice("该品牌已有周期监测任务，可在下方启停，或去定时任务页管理。"); return; }
+    const pipeline = buildGeoMonitorPipeline({ brand, competitors: competitorList, frequency: scheduleFreq });
+    savePipelines([...loadPipelines(), pipeline]);
+    setPipelinesVersion((v) => v + 1);
+    setError("");
+    setNotice(`周期监测已创建（${GEO_MONITOR_FREQUENCIES.find((f) => f.key === scheduleFreq)?.label}），下次运行：${nextRunLabel(pipeline, Date.now())}。运行时用当前问题集，问题集变更后趋势可比性以本页校验为准。`);
+  };
+
+  const toggleGeoSchedule = () => {
+    if (!geoSchedule) return;
+    const next = loadPipelines().map((row) => (row.id === geoSchedule.id ? { ...row, enabled: !row.enabled } : row));
+    savePipelines(next);
+    setPipelinesVersion((v) => v + 1);
+    setNotice(geoSchedule.enabled ? "周期监测已停用" : "周期监测已启用");
+  };
 
   // 首刷放到 setTimeout：effect 内同步 setState 会触发 react-hooks 规则
   useEffect(() => {
@@ -164,6 +197,39 @@ export function GeoMonitor({ brand, questions, onSnapshot }: GeoMonitorProps) {
         竞品品牌（可选，最多 3 个，逗号分隔；同一批问题同时测竞品提及）
         <input value={competitorText} onChange={(event) => setCompetitorText(event.target.value)} placeholder="例如：竞品甲, 竞品乙" />
       </label>
+
+      {/* 第 29 批：周期监测模板（一键创建定时任务，运行时用当前问题集） */}
+      <div className="geo-schedule">
+        <span className="geo-schedule-title"><CalendarClock size={14} /> 周期监测</span>
+        {geoSchedule ? (
+          <div className="geo-schedule-row">
+            <span>
+              {geoSchedule.enabled ? "已启用" : "已停用"} · 下次运行：{nextRunLabel(geoSchedule, Date.now())}
+              <small>运行时用当前问题集；问题集变更后趋势可比性以本页校验为准。</small>
+            </span>
+            <span className="geo-schedule-actions">
+              <button type="button" className="button button-secondary" onClick={toggleGeoSchedule}>
+                {geoSchedule.enabled ? "停用" : "启用"}
+              </button>
+              <button type="button" className="text-link" onClick={() => { window.location.hash = `#/console/${navToSlug("定时任务")}`; }}>
+                去定时任务页管理
+              </button>
+            </span>
+          </div>
+        ) : (
+          <div className="geo-schedule-row">
+            <select value={scheduleFreq} onChange={(event) => setScheduleFreq(event.target.value as GeoMonitorFrequency)} aria-label="监测频率">
+              {GEO_MONITOR_FREQUENCIES.map((freq) => (
+                <option key={freq.key} value={freq.key}>{freq.label}（{freq.hint}）</option>
+              ))}
+            </select>
+            <button type="button" className="button button-secondary" onClick={createGeoSchedule}>
+              设为周期监测
+            </button>
+            <small>一键创建定时任务；运行时用当前问题集，问题集变更后趋势可比性以本页校验为准。页面关闭期间到期会积压，重开后自动补跑。</small>
+          </div>
+        )}
+      </div>
 
       {busy && progress && <p className="geo-notice">{progress}</p>}
       {error && <p className="geo-error">{error}</p>}

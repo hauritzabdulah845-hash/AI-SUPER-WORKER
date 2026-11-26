@@ -10,12 +10,15 @@
  */
 import { listLeads, loadKnowledgeContext } from "./api";
 import { runGeoAudit } from "./geo";
+import { appendSnapshot, runGeoMonitor } from "./geomonitor";
+import { mentionRate, pct } from "./geotrack";
+import { loadQuestions } from "./keywordLibrary";
 import { groupMedia, listMedia } from "./media";
 import { generateMixPlan, savePlan } from "./mixcut";
 import { runAgentTask } from "./runner";
 import { createVideoJob, saveVideoJob } from "./video";
 
-export type PipelineStepKind = "task" | "geo" | "video" | "mixcut" | "leads-scan";
+export type PipelineStepKind = "task" | "geo" | "geo-monitor" | "video" | "mixcut" | "leads-scan";
 
 export interface PipelineStep {
   id: string;
@@ -76,6 +79,14 @@ export const STEP_META: Record<
     params: [
       { key: "brand", label: "品牌/企业名", placeholder: "例：某某茶饮", def: "" },
       { key: "keywords", label: "目标搜索词", placeholder: "逗号分隔，例：加盟,开店", def: "" },
+    ],
+  },
+  "geo-monitor": {
+    label: "GEO 周期监测",
+    hint: "按品牌当前监测问题集跑一次提及监测并存快照（GEO 工作台第 4 步一键创建）",
+    params: [
+      { key: "brand", label: "品牌/企业名", placeholder: "例：某某茶饮", def: "" },
+      { key: "competitors", label: "竞品品牌（可选）", placeholder: "逗号分隔，最多 3 个", def: "" },
     ],
   },
   video: {
@@ -272,6 +283,24 @@ async function executeStep(step: PipelineStep): Promise<{ status: "done" | "fail
       return {
         status: "done",
         detail: `评分 ${result.score}/100 · ${result.issues.length} 条待修${topIssue}`.slice(0, 140),
+      };
+    }
+    case "geo-monitor": {
+      // 第 29 批接线点：GEO 周期监测。运行时读该品牌当前问题集（不冻结创建时的问题），
+      // 竞品取步骤参数；跑完存快照，与手动「跑一次监测」同一条链路。
+      // 页面打开时的 30 秒轮询与 scheduler-worker 补跑（catchup）都经 runPipelineById 走到这里。
+      const brand = (step.params.brand ?? step.params.geoMonitor ?? "").trim();
+      if (!brand) throw new Error("缺少品牌名，先在 GEO 工作台填写品牌再创建周期监测");
+      const questions = loadQuestions(brand).map((item) => item.text.trim()).filter(Boolean);
+      if (!questions.length) throw new Error("该品牌监测问题集为空，先到 GEO 工作台第 3 步填问题集");
+      const competitors = [...new Set((step.params.competitors ?? "").split(/[,，、\s]+/).map((c) => c.trim()).filter((c) => c && c !== brand))].slice(0, 3);
+      const { snapshot, skipped } = await runGeoMonitor({ brand, questions, competitors });
+      appendSnapshot(snapshot);
+      const hit = snapshot.samples.filter((s) => s.mentioned).length;
+      const skipNote = skipped.length ? ` · ${skipped.length} 条失败跳过` : "";
+      return {
+        status: "done",
+        detail: `提及率 ${pct(mentionRate(snapshot))}（${hit}/${snapshot.samples.length}）· 快照已存${skipNote}`.slice(0, 140),
       };
     }
     case "video": {

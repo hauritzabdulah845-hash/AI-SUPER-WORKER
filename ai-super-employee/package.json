@@ -36,7 +36,10 @@
     "test:geokeywords": "tsx scripts/geokeywords-check.ts",
     "test:geocompare": "tsx scripts/geocompare-check.ts",
     "test:friendlyerror": "tsx scripts/friendlyerror-check.ts",
-    "test:keywordlibrary": "tsx scripts/keywordlibrary-check.ts"
+    "test:keywordlibrary": "tsx scripts/keywordlibrary-check.ts",
+    "test:brandassets": "tsx scripts/brandassets-check.ts",
+    "test:georeview": "tsx scripts/georeview-check.ts",
+    "test:geoschedule": "tsx scripts/geoschedule-check.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

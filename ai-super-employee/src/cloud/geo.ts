@@ -139,11 +139,12 @@ const ASSET_SYSTEM = [
   '{"facts":["标签：值"],"bullets":["问题句"],"faq":[{"q":"用户会问的问题","a":"结论先行的答案"}],"summary":"这批素材补强了什么，40字内"}',
 ].join("\n");
 
-/** 生成品牌事实卡 / FAQ / 问题清单。 */
+/** 生成品牌事实卡 / FAQ / 问题清单。brandContext 为品牌三件套拼成的规范文本（第 29 批注入点，见 brandAssets.buildBrandContext）。 */
 export async function generateGeoAssets(input: {
   brand: string;
   keywords: string;
   material: string;
+  brandContext?: string;
   signal?: AbortSignal;
 }): Promise<GeoAssetBundle> {
   const material = clip(input.material, 12000);
@@ -157,6 +158,7 @@ export async function generateGeoAssets(input: {
         content: [
           `品牌/企业名称：${input.brand || "（未填写）"}`,
           `目标搜索词：${input.keywords || "（未填写）"}`,
+          ...(input.brandContext?.trim() ? ["", "=== 品牌规范（必须遵守，事实与数字以此为准） ===", input.brandContext.trim()] : []),
           "",
           "=== 企业资料 ===",
           material,
@@ -322,10 +324,11 @@ const PUBLISH_SYSTEM = [
   "platform 必须与输入列表一一对应。",
 ].join("\n");
 
-/** 生成各平台适配稿（标题 / 正文 / 话题标签）。 */
+/** 生成各平台适配稿（标题 / 正文 / 话题标签）。brandContext 为品牌三件套规范文本（第 29 批注入点，见 brandAssets.buildBrandContext）。 */
 export async function buildPlatformPosts(input: {
   content: string;
   platformNames: string[];
+  brandContext?: string;
   signal?: AbortSignal;
 }): Promise<PlatformPost[]> {
   const content = clip(input.content, 8000);
@@ -345,6 +348,7 @@ export async function buildPlatformPosts(input: {
             (item) =>
               `- ${item.name}：标题≤${item.maxTitle}字，正文≤${item.maxCaption}字，标签要求「${item.tagHint}」，建议时段 ${item.bestTime}`,
           ),
+          ...(input.brandContext?.trim() ? ["", "=== 品牌规范（必须遵守，事实与数字以此为准） ===", input.brandContext.trim()] : []),
           "",
           "=== 待分发内容 ===",
           content,

@@ -35,7 +35,7 @@ import {
   type CatchupReport,
 } from "../cloud/catchup";
 
-const KIND_ORDER: PipelineStepKind[] = ["task", "geo", "video", "mixcut", "leads-scan"];
+const KIND_ORDER: PipelineStepKind[] = ["task", "geo", "geo-monitor", "video", "mixcut", "leads-scan"];
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleString("zh-CN", { hour12: false, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });

@@ -62,6 +62,29 @@ import { GeoMonitor } from "./GeoMonitor";
 import { MAX_QUESTIONS, loadSnapshots, loadSnapshotsFor } from "../cloud/geomonitor";
 import { friendlyError } from "../cloud/friendlyError";
 import {
+  buildBrandContext,
+  exportBrandAssetsMarkdown,
+  extractBrandCard,
+  loadBrandAssets,
+  saveBrandAssets,
+  validateBrandCard,
+  type BrandAssets,
+  type BrandCard,
+  type BrandSample,
+  type StyleRules,
+} from "../cloud/brandAssets";
+import {
+  DRAFT_STATUS_LABEL,
+  canDistribute,
+  distributeBlockReason,
+  enqueueForReview,
+  hasApprovedDraft,
+  loadReviewQueue,
+  removeReviewItem,
+  updateReviewItem,
+  type GeoReviewItem,
+} from "../cloud/geoReview";
+import {
   firstIncompleteStep,
   geoStepStatus,
   overviewStats,
@@ -149,7 +172,12 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
   const [manualWord, setManualWord] = useState("");
   const [manualIntent, setManualIntent] = useState<GeoKeywordIntent>("咨询");
   const [manualPriority, setManualPriority] = useState<GeoKeywordPriority>("中");
-  const [busy, setBusy] = useState<"" | "load" | "audit" | "assets" | "test" | "expand" | "topics" | "topic-one">("");
+  // 第 29 批：品牌素材三件套（按品牌分键存本机）与稿件审核队列。
+  const [brandAssets, setBrandAssets] = useState<BrandAssets>(() => loadBrandAssets(""));
+  const [brandAssetsOpen, setBrandAssetsOpen] = useState(false);
+  const [reviewQueue, setReviewQueue] = useState<GeoReviewItem[]>(() => loadReviewQueue(""));
+  const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<"" | "load" | "audit" | "assets" | "test" | "expand" | "topics" | "topic-one" | "extract">("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [audit, setAudit] = useState<GeoAuditResult | null>(null);
@@ -195,7 +223,112 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
     setBrandKey(key);
     setLibrary(loadLibrary(key));
     setQuestionItems(loadQuestions(key));
+    setBrandAssets(loadBrandAssets(key));
+    setReviewQueue(loadReviewQueue(key));
   };
+
+  /* ---------- 第 29 批：品牌素材三件套 ---------- */
+
+  const updateCard = (patch: Partial<BrandCard>) => {
+    setBrandAssets((prev) => ({ ...prev, card: { ...prev.card, ...patch } }));
+  };
+
+  const updateRules = (patch: Partial<StyleRules>) => {
+    setBrandAssets((prev) => ({ ...prev, rules: { ...prev.rules, ...patch } }));
+  };
+
+  const updateSample = (index: number, patch: Partial<BrandSample>) => {
+    setBrandAssets((prev) => ({
+      ...prev,
+      samples: prev.samples.map((sample, i) => (i === index ? { ...sample, ...patch } : sample)),
+    }));
+  };
+
+  /** 三件套随改随存本机（失焦时落盘，避免多行输入中途被归一化打断）。 */
+  const persistBrandAssets = () => {
+    saveBrandAssets(brandKey, brandAssets);
+  };
+
+  /** 从企业资料提取信息卡片：提取到的非空字段覆盖，空字段保留已填内容。 */
+  const runExtractCard = async () => {
+    setBusy("extract");
+    setError("");
+    setNotice("");
+    try {
+      const { card, demo } = await extractBrandCard({ brand, material });
+      setBrandAssets((prev) => {
+        const merged: BrandCard = {
+          intro: card.intro || prev.card.intro,
+          sellingPoints: card.sellingPoints.length ? card.sellingPoints : prev.card.sellingPoints,
+          audience: card.audience || prev.card.audience,
+          priceBand: card.priceBand || prev.card.priceBand,
+          coverage: card.coverage || prev.card.coverage,
+          contact: card.contact || prev.card.contact,
+          honors: card.honors.length ? card.honors : prev.card.honors,
+        };
+        const next = { ...prev, card: merged };
+        saveBrandAssets(brandKey, next);
+        return next;
+      });
+      setBrandAssetsOpen(true);
+      setNotice(demo ? "已按启发式提取卡片（模型不可用，仅作占位，请人工校准）" : "已从企业资料提取品牌卡片，请核对后使用");
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  /* ---------- 第 29 批：稿件审核门禁 ---------- */
+
+  /** 把当前 GEO 素材拼成稿件文本送审（自动检查按表达规范执行）。 */
+  const submitAssetsForReview = () => {
+    if (!assets) { setError("先生成 GEO 素材，再送审。"); return; }
+    const body = [
+      ...assets.facts.map((item) => `- ${item}`),
+      "",
+      ...assets.faq.flatMap((item) => [`问：${item.q}`, `答：${item.a}`, ""]),
+      ...assets.bullets.map((item) => `- ${item}`),
+    ].join("\n");
+    const item = enqueueForReview(brandKey || brand, {
+      title: `${brand || "未命名品牌"} GEO 素材稿`,
+      body,
+      kind: "assets",
+      assets: brandAssets,
+    });
+    setReviewQueue(loadReviewQueue(brandKey || brand));
+    const failed = item.checks.filter((check) => !check.pass);
+    setError("");
+    setNotice(failed.length
+      ? `已送审，自动检查 ${failed.length} 项未过（${failed.map((c) => c.label).join("、")}），通过前不能分发`
+      : "已送审，自动检查全部通过，人工通过后即可分发");
+  };
+
+  const decideReview = (item: GeoReviewItem, action: "approve" | "reject" | "submit" | "reopen") => {
+    try {
+      const next = updateReviewItem(brandKey || brand, item.id, action, { note: rejectNotes[item.id] ?? "" });
+      setReviewQueue(next);
+      setError("");
+      setNotice(action === "approve" ? `《${item.title}》已通过，可分发` : action === "reject" ? `《${item.title}》已驳回` : `《${item.title}》已${action === "submit" ? "重新送审" : "退回草稿"}`);
+    } catch (err) {
+      setError(friendlyError(err));
+    }
+  };
+
+  /**
+   * 分发门禁（GEO 侧拦截点）：本会话已生成素材但当前品牌还没有已通过的稿件时，
+   * 「去内容工厂」入口拦截并提示先送审；未生成素材时放行（去内容工厂做其他工作不受影响）。
+   */
+  const goToContentFactory = () => {
+    if (assets && !hasApprovedDraft(brandKey || brand)) {
+      setError("素材尚未通过审核：请先在第 1 步点「送审」，人工通过后再去分发。");
+      setActiveStep(1);
+      return;
+    }
+    window.location.hash = `#/console/${navToSlug("内容工厂")}`;
+  };
+
+  const cardValidation = validateBrandCard(brandAssets.card);
 
   /** 合并一批问题入问题集并给出人话提示（去重、上限截断都明说）。 */
   const mergeIntoQuestions = (incoming: GeoQuestionItem[], label: string) => {
@@ -266,7 +399,12 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
     setError("");
     setNotice("");
     try {
-      const result = await generateGeoAssets({ brand, keywords: keywordsOverride ?? keywords, material });
+      const result = await generateGeoAssets({
+        brand,
+        keywords: keywordsOverride ?? keywords,
+        material,
+        brandContext: buildBrandContext(brandAssets) || undefined,
+      });
       setAssets(result);
       setNotice(`素材已生成：${result.facts.length} 条事实卡 · ${result.faq.length} 组 FAQ`);
       if (!questionItems.some((item) => item.text.trim())) {
@@ -627,6 +765,134 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
         </div>
       </div>
 
+      {/* 第 29 批：品牌素材三件套（信息卡片 + 表达规范 + 样例库，生成时自动注入） */}
+      <div className="console-card geo-brand-assets" onBlur={persistBrandAssets}>
+        <div className="console-card-header">
+          <div>
+            <h2><BookMarked size={15} /> 品牌素材三件套</h2>
+            <p>信息卡片完整度 {cardValidation.score}/100{cardValidation.missing.length ? `，待补：${cardValidation.missing.join("、")}` : "，已齐全"}。生成素材与平台稿时自动注入规范，口径不再靠每次手写。</p>
+          </div>
+          <div className="geo-ba-head-actions">
+            <button type="button" className="button button-secondary" onClick={() => void runExtractCard()} disabled={busy !== ""}>
+              {busy === "extract" ? <LoaderCircle size={14} className="spin" /> : <Sparkles size={14} />}从企业资料提取
+            </button>
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={() => downloadMarkdown(`品牌素材三件套-${brand || "未命名品牌"}-${new Date().toISOString().slice(0, 10)}.md`, exportBrandAssetsMarkdown(brand, brandAssets))}
+            >
+              <Download size={14} />导出三件套
+            </button>
+            <button
+              type="button"
+              className="text-link"
+              aria-expanded={brandAssetsOpen}
+              onClick={() => setBrandAssetsOpen((open) => !open)}
+            >
+              {brandAssetsOpen ? "收起" : "展开编辑"}<ChevronDown size={13} className={brandAssetsOpen ? "geo-chevron open" : "geo-chevron"} />
+            </button>
+          </div>
+        </div>
+        {brandAssetsOpen && (
+          <div className="geo-ba-body">
+            <h3>品牌信息卡片</h3>
+            <div className="geo-ba-grid">
+              <label>
+                一句话介绍
+                <input value={brandAssets.card.intro} onChange={(event) => updateCard({ intro: event.target.value })} placeholder="谁、做什么、给谁" />
+              </label>
+              <label>
+                目标人群
+                <input value={brandAssets.card.audience} onChange={(event) => updateCard({ audience: event.target.value })} placeholder="例如：25-35 岁白领与加盟商" />
+              </label>
+              <label>
+                价格带
+                <input value={brandAssets.card.priceBand} onChange={(event) => updateCard({ priceBand: event.target.value })} placeholder="例如：18-25 元/杯" />
+              </label>
+              <label>
+                门店 / 服务范围
+                <input value={brandAssets.card.coverage} onChange={(event) => updateCard({ coverage: event.target.value })} placeholder="例如：杭州 12 家门店" />
+              </label>
+              <label>
+                联系方式（可留占位）
+                <input value={brandAssets.card.contact} onChange={(event) => updateCard({ contact: event.target.value })} placeholder="例如：加盟热线见官网" />
+              </label>
+              <label className="geo-ba-wide">
+                核心卖点（一行一条，带数字最好）
+                <textarea rows={3} value={brandAssets.card.sellingPoints.join("\n")} onChange={(event) => updateCard({ sellingPoints: event.target.value.split("\n") })} placeholder={"现煮鲜奶茶\n手作柠檬茶\n支持企业下午茶团购"} />
+              </label>
+              <label className="geo-ba-wide">
+                资质荣誉（一行一条）
+                <textarea rows={2} value={brandAssets.card.honors.join("\n")} onChange={(event) => updateCard({ honors: event.target.value.split("\n") })} placeholder="2025 杭州餐饮协会年度新锐品牌" />
+              </label>
+            </div>
+
+            <h3>表达规范清单</h3>
+            <div className="geo-ba-grid">
+              <label>
+                禁用词（逗号分隔，命中即审核不过）
+                <input value={brandAssets.rules.bannedWords.join(", ")} onChange={(event) => updateRules({ bannedWords: event.target.value.split(/[,，、]/).map((w) => w.trim()) })} placeholder="最好, 第一, 绝对" />
+              </label>
+              <label>
+                必用词（逗号分隔）
+                <input value={brandAssets.rules.requiredWords.join(", ")} onChange={(event) => updateRules({ requiredWords: event.target.value.split(/[,，、]/).map((w) => w.trim()) })} placeholder="品牌名, 核心品类词" />
+              </label>
+              <label>
+                语气
+                <select value={brandAssets.rules.tone} onChange={(event) => updateRules({ tone: event.target.value })}>
+                  <option value="">未设置</option>
+                  <option value="专业克制">专业克制</option>
+                  <option value="亲切口语">亲切口语</option>
+                  <option value="活泼种草">活泼种草</option>
+                  <option value="严谨正式">严谨正式</option>
+                </select>
+              </label>
+              <label>
+                句式偏好
+                <input value={brandAssets.rules.sentenceStyle} onChange={(event) => updateRules({ sentenceStyle: event.target.value })} placeholder="结论先行、短句、多用数字" />
+              </label>
+              <label>
+                数字口径
+                <input value={brandAssets.rules.numberRule} onChange={(event) => updateRules({ numberRule: event.target.value })} placeholder="价格以官方最新公布为准" />
+              </label>
+              <label>
+                免责声明（文末带上）
+                <input value={brandAssets.rules.disclaimer} onChange={(event) => updateRules({ disclaimer: event.target.value })} placeholder="本文不构成投资建议" />
+              </label>
+            </div>
+
+            <h3>样例库（带批注，学风格不抄内容）</h3>
+            {brandAssets.samples.length === 0 && <p className="geo-hint">还没有样例。粘贴一篇写得好的稿件节选并批注「好在哪」，生成时会作风格锚点。</p>}
+            {brandAssets.samples.map((sample, index) => (
+              <div className="geo-ba-sample" key={index}>
+                <div className="geo-ba-sample-head">
+                  <input value={sample.title} onChange={(event) => updateSample(index, { title: event.target.value })} placeholder="样例标题" aria-label={`样例 ${index + 1} 标题`} />
+                  <button
+                    type="button"
+                    className="text-link geo-library-del"
+                    onClick={() => setBrandAssets((prev) => ({ ...prev, samples: prev.samples.filter((_, i) => i !== index) }))}
+                  >
+                    <Trash2 size={13} />删除样例
+                  </button>
+                </div>
+                <textarea rows={3} value={sample.excerpt} onChange={(event) => updateSample(index, { excerpt: event.target.value })} placeholder="正文节选（只存节选）" aria-label={`样例 ${index + 1} 节选`} />
+                <textarea rows={2} value={sample.notes.join("\n")} onChange={(event) => updateSample(index, { notes: event.target.value.split("\n") })} placeholder="批注（一行一条）：好在结论先行 / 价格口径需改" aria-label={`样例 ${index + 1} 批注`} />
+              </div>
+            ))}
+            <div className="geo-actions">
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => setBrandAssets((prev) => ({ ...prev, samples: [...prev.samples, { title: "", excerpt: "", notes: [] }] }))}
+              >
+                <Plus size={14} />添加样例
+              </button>
+              <small className="geo-hint">三件套按品牌存在本机浏览器，失焦自动保存；生成素材与平台稿时自动注入。</small>
+            </div>
+          </div>
+        )}
+      </div>
+
       {audit && (
         <div className="console-card geo-audit">
           <div className="console-card-header">
@@ -666,20 +932,25 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
         <div className="console-card geo-assets">
           <div className="console-card-header">
             <div><h2><Sparkles size={15} /> 可引用素材</h2><p>{assets.summary}</p></div>
-            <button
-              type="button"
-              className="text-link"
-              onClick={() => {
-                const text = [
-                  ...assets.facts.map((item) => `- ${item}`),
-                  "",
-                  ...assets.faq.flatMap((item) => [`**${item.q}**`, item.a, ""]),
-                ].join("\n");
-                void copyText(text).then((ok) => setNotice(ok ? "素材已复制到剪贴板" : "复制失败，请手动选择"));
-              }}
-            >
-              <ClipboardCopy size={14} />一键复制
-            </button>
+            <span className="geo-assets-head-actions">
+              <button type="button" className="button button-secondary" onClick={submitAssetsForReview}>
+                送审（审核通过后才能分发）
+              </button>
+              <button
+                type="button"
+                className="text-link"
+                onClick={() => {
+                  const text = [
+                    ...assets.facts.map((item) => `- ${item}`),
+                    "",
+                    ...assets.faq.flatMap((item) => [`**${item.q}**`, item.a, ""]),
+                  ].join("\n");
+                  void copyText(text).then((ok) => setNotice(ok ? "素材已复制到剪贴板" : "复制失败，请手动选择"));
+                }}
+              >
+                <ClipboardCopy size={14} />一键复制
+              </button>
+            </span>
           </div>
 
           <div className="geo-facts">
@@ -702,6 +973,79 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
               <h3>补全语料的问题清单</h3>
               <div>{assets.bullets.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}</div>
             </div>
+          )}
+        </div>
+      )}
+      {/* 第 29 批：待审稿件（审核门禁：通过后才放行分发入口） */}
+      {(reviewQueue.length > 0 || assets) && (
+        <div className="console-card geo-review-queue">
+          <div className="console-card-header">
+            <div>
+              <h2>待审稿件（{reviewQueue.filter((item) => item.status === "pending").length} 条待审）</h2>
+              <p>GEO 素材稿 / 平台稿先送审：自动检查按表达规范逐项校验，人工通过后才放行「去分发」。队列按品牌存在本机浏览器。</p>
+            </div>
+          </div>
+          {reviewQueue.length === 0 ? (
+            <p className="geo-hint">还没有送审稿件。生成素材后点「送审」，或在聚合发布页对平台稿点「送审」。</p>
+          ) : (
+            <ul className="geo-review-list">
+              {reviewQueue.map((item) => (
+                <li className="geo-review-row" key={item.id}>
+                  <div className="geo-review-main">
+                    <strong>{item.title}</strong>
+                    <span className={`geo-review-status st-${item.status}`}>{DRAFT_STATUS_LABEL[item.status]}</span>
+                    <small>{item.kind === "assets" ? "GEO 素材稿" : item.kind === "platform" ? "平台稿" : "手工稿"} · {new Date(item.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}</small>
+                  </div>
+                  <div className="geo-review-checks">
+                    {item.checks.map((check) => (
+                      <span key={check.key} className={check.pass ? "geo-check pass" : "geo-check fail"} title={check.detail}>
+                        {check.pass ? "✓" : "✗"} {check.label}
+                      </span>
+                    ))}
+                  </div>
+                  {item.checks.some((check) => !check.pass) && (
+                    <p className="geo-hint">{item.checks.filter((check) => !check.pass).map((check) => check.detail).join("；")}</p>
+                  )}
+                  {item.status === "rejected" && item.rejectReason && <p className="geo-error">驳回理由：{item.rejectReason}</p>}
+                  <div className="geo-review-actions">
+                    {item.status === "pending" && (
+                      <>
+                        <button type="button" className="button button-primary" onClick={() => decideReview(item, "approve")}>通过</button>
+                        <input
+                          value={rejectNotes[item.id] ?? ""}
+                          onChange={(event) => setRejectNotes((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                          placeholder="驳回理由（一句）"
+                          aria-label={`${item.title} 驳回理由`}
+                        />
+                        <button type="button" className="button button-secondary" onClick={() => decideReview(item, "reject")}>驳回</button>
+                      </>
+                    )}
+                    {item.status === "rejected" && (
+                      <button type="button" className="button button-secondary" onClick={() => decideReview(item, "submit")}>重新送审</button>
+                    )}
+                    {item.status === "draft" && (
+                      <button type="button" className="button button-secondary" onClick={() => decideReview(item, "submit")}>送审</button>
+                    )}
+                    {canDistribute(item) ? (
+                      <>
+                        <button type="button" className="button button-primary" onClick={() => { window.location.hash = `#/console/${navToSlug("内容工厂")}`; }}>去内容工厂分发</button>
+                        <button type="button" className="button button-secondary" onClick={() => { window.location.hash = `#/console/${navToSlug("聚合发布")}`; }}>去聚合发布</button>
+                        <button type="button" className="text-link" onClick={() => decideReview(item, "reopen")}>撤回重审</button>
+                      </>
+                    ) : (
+                      <small className="geo-hint">{distributeBlockReason(item)}</small>
+                    )}
+                    <button
+                      type="button"
+                      className="text-link geo-library-del"
+                      onClick={() => setReviewQueue(removeReviewItem(brandKey || brand, item.id))}
+                    >
+                      <Trash2 size={13} />删除
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}
@@ -737,7 +1081,7 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
           <button type="button" className="text-link" onClick={keywordsToAssets} disabled={!expanded?.keywords.length}>
             高优先级词回填素材生成
           </button>
-          <button type="button" className="text-link" onClick={() => { window.location.hash = `#/console/${navToSlug("内容工厂")}`; }}>
+          <button type="button" className="text-link" onClick={goToContentFactory}>
             去内容工厂生产
           </button>
         </div>
@@ -823,7 +1167,7 @@ export function GeoWorkbench({ knowledge }: GeoWorkbenchProps) {
                       <button
                         type="button"
                         className="text-link"
-                        onClick={() => { window.location.hash = `#/console/${navToSlug("内容工厂")}`; }}
+                        onClick={goToContentFactory}
                       >
                         去内容工厂
                       </button>

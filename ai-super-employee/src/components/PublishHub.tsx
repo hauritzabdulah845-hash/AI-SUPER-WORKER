@@ -9,6 +9,15 @@ import {
   Sparkles,
 } from "lucide-react";
 import { buildPlatformPosts, PUBLISH_PLATFORMS, type PlatformPost } from "../cloud/geo";
+import { buildBrandContext, loadBrandAssets } from "../cloud/brandAssets";
+import {
+  DRAFT_STATUS_LABEL,
+  canDistribute,
+  distributeBlockReason,
+  enqueueForReview,
+  loadReviewQueue,
+} from "../cloud/geoReview";
+import { friendlyError } from "../cloud/friendlyError";
 
 export interface PublishSource {
   title: string;
@@ -69,6 +78,10 @@ export function PublishHub({ contents, initialSourceId = "", onSourceConsumed }:
   const [notice, setNotice] = useState("");
   const [posts, setPosts] = useState<PlatformPost[] | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  // 第 29 批：品牌（可选）用于注入品牌三件套规范 + 平台稿送审门禁。
+  const [brandName, setBrandName] = useState("");
+  const [reviewIds, setReviewIds] = useState<Record<string, string>>({});
+  const [reviewTick, setReviewTick] = useState(0);
 
   const selected = useMemo(() => contents.find((item) => `${item.title}-${item.created_at}` === sourceId), [contents, sourceId]);
 
@@ -98,18 +111,56 @@ export function PublishHub({ contents, initialSourceId = "", onSourceConsumed }:
     setError("");
     setNotice("");
     try {
-      const result = await buildPlatformPosts({ content: sourceText, platformNames: platforms });
+      const brandContext = brandName.trim() ? buildBrandContext(loadBrandAssets(brandName)) : "";
+      const result = await buildPlatformPosts({
+        content: sourceText,
+        platformNames: platforms,
+        brandContext: brandContext || undefined,
+      });
       setPosts(result);
       setChecked({});
-      setNotice(`已生成 ${result.length} 个平台的适配稿，逐个复制到平台后台发布即可。`);
+      setReviewIds({});
+      setNotice(`已生成 ${result.length} 个平台的适配稿，逐个复制到平台后台发布即可。${brandContext ? "（已注入品牌三件套规范）" : ""}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "生成失败");
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }
   };
 
+  /** 平台稿送审（第 29 批门禁）：入 GEO 待审队列，通过前复制被拦截。 */
+  const submitPostForReview = (post: PlatformPost) => {
+    const brand = brandName.trim() || "未命名品牌";
+    const body = [post.title, "", post.caption, "", post.tags.map((tag) => `#${tag}`).join(" ")].join("\n");
+    const item = enqueueForReview(brand, {
+      title: `${post.platform}稿：${post.title || "未命名"}`,
+      body,
+      kind: "platform",
+      assets: loadBrandAssets(brandName),
+    });
+    setReviewIds((prev) => ({ ...prev, [post.platformKey]: item.id }));
+    setReviewTick((v) => v + 1);
+    const failed = item.checks.filter((check) => !check.pass);
+    setError("");
+    setNotice(failed.length
+      ? `「${post.platform}」已送审，自动检查 ${failed.length} 项未过（${failed.map((c) => c.label).join("、")}），请到 GEO 工作台待审稿件处理`
+      : `「${post.platform}」已送审，自动检查全部通过，到 GEO 工作台人工通过后即可复制发布`);
+  };
+
+  const reviewStatusOf = (post: PlatformPost) => {
+    void reviewTick;
+    const id = reviewIds[post.platformKey];
+    if (!id) return null;
+    return loadReviewQueue(brandName.trim() || "未命名品牌").find((item) => item.id === id) ?? null;
+  };
+
   const copyPost = async (post: PlatformPost) => {
+    // 分发门禁拦截点：已送审但未通过的平台稿不许复制发布（未送审的稿不拦截，保持原有人工流程）。
+    const reviewItem = reviewStatusOf(post);
+    if (reviewItem && !canDistribute(reviewItem)) {
+      setError(distributeBlockReason(reviewItem));
+      return;
+    }
     const text = [post.title, "", post.caption, "", post.tags.map((tag) => `#${tag}`).join(" ")].join("\n");
     const ok = await copyText(text);
     setNotice(ok ? `「${post.platform}」标题+正文+话题已复制` : "复制失败，请手动选择文本");
@@ -151,6 +202,10 @@ export function PublishHub({ contents, initialSourceId = "", onSourceConsumed }:
         </div>
 
         <div className="publish-form">
+          <label>
+            品牌（可选，填了会注入 GEO 品牌三件套规范并按品牌送审）
+            <input value={brandName} onChange={(event) => setBrandName(event.target.value)} placeholder="例如：山野茶饮" />
+          </label>
           <label>
             选择内容产出
             <select value={sourceId} onChange={(event) => setSourceId(event.target.value)}>
@@ -223,6 +278,16 @@ export function PublishHub({ contents, initialSourceId = "", onSourceConsumed }:
               <div className="publish-card-head">
                 <span className="publish-platform">{post.platform}</span>
                 <em>{post.time}</em>
+                {(() => {
+                  const reviewItem = reviewStatusOf(post);
+                  return reviewItem ? (
+                    <span className={`geo-review-status st-${reviewItem.status}`}>{DRAFT_STATUS_LABEL[reviewItem.status]}</span>
+                  ) : (
+                    <button type="button" className="text-link" onClick={() => submitPostForReview(post)}>
+                      送审
+                    </button>
+                  );
+                })()}
                 <button type="button" className="text-link" onClick={() => void copyPost(post)}>
                   <Copy size={14} />复制全部
                 </button>

@@ -9621,3 +9621,47 @@ ol.meeting-plain-list { list-style: decimal; }
   .geo-q-row input { min-width: 140px; }
   .geo-library-actions { gap: var(--space-2); }
 }
+
+/* ===== 第二十九批：GEO 品牌三件套 / 审核门禁 / 监测周期模板 ===== */
+.geo-ba-head-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.geo-ba-head-actions .button { white-space: nowrap; }
+.geo-ba-body { display: grid; gap: var(--space-3); padding: 0 19px 16px; }
+.geo-ba-body h3 { margin: var(--space-2) 0 0; color: var(--ink-2); font-size: 13.5px; }
+.geo-ba-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-3); }
+.geo-ba-grid label { display: grid; gap: 6px; color: var(--ink-3); font-size: 12.5px; font-weight: 600; }
+.geo-ba-grid input, .geo-ba-grid select, .geo-ba-grid textarea, .geo-ba-sample input, .geo-ba-sample textarea { padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink-2); font-size: 12.5px; line-height: 1.6; }
+.geo-ba-wide { grid-column: 1 / -1; }
+.geo-ba-sample { display: grid; gap: var(--space-2); padding: var(--space-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.geo-ba-sample-head { display: flex; align-items: center; gap: var(--space-2); }
+.geo-ba-sample-head input { flex: 1; min-width: 140px; }
+.geo-assets-head-actions { display: inline-flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+
+.geo-review-list { list-style: none; margin: 0; padding: 4px 19px 16px; display: grid; gap: var(--space-3); }
+.geo-review-row { display: grid; gap: var(--space-2); padding: var(--space-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.geo-review-main { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.geo-review-main strong { color: var(--ink-2); font-size: 13.5px; }
+.geo-review-main small { color: var(--ink-5); font-size: 11px; }
+.geo-review-status { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 650; background: var(--bg); color: var(--ink-3); border: 1px solid var(--line); }
+.geo-review-status.st-pending { color: var(--warning-strong, #b45309); }
+.geo-review-status.st-approved { color: var(--success-strong, #15803d); }
+.geo-review-status.st-rejected { color: var(--danger-strong); }
+.geo-review-checks { display: flex; flex-wrap: wrap; gap: 6px; }
+.geo-check { padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--line); background: var(--bg); color: var(--ink-3); }
+.geo-check.pass { color: var(--success-strong, #15803d); }
+.geo-check.fail { color: var(--danger-strong); }
+.geo-review-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.geo-review-actions input { flex: 1; min-width: 140px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink-2); font-size: 12.5px; }
+.geo-review-actions .button { white-space: nowrap; }
+
+.geo-schedule { display: grid; gap: var(--space-2); padding: 12px 19px 0; }
+.geo-schedule-title { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 13.5px; font-weight: 650; }
+.geo-schedule-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.geo-schedule-row select { padding: 7px 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink-3); font-size: 12.5px; }
+.geo-schedule-row small { color: var(--ink-5); font-size: 11px; }
+.geo-schedule-actions { display: inline-flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+
+@media (max-width: 640px) {
+  .geo-ba-grid { grid-template-columns: 1fr; }
+  .geo-review-actions input { min-width: 120px; }
+  .geo-schedule-row .button { white-space: nowrap; }
+}
